@@ -1,5 +1,6 @@
 # SGNMT
 
+TEST
 
 SGNMT is an open-source framework for neural machine translation (NMT) and other sequence prediction
 tasks. The tool provides a flexible platform which allows pairing NMT with various other models such 
