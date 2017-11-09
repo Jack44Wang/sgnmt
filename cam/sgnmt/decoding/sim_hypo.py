@@ -3,6 +3,7 @@ simultaneous translation.
 """
 
 import copy
+from cam.sgnmt.decoding.core import Hypothesis, PartialHypothesis
 
 class SimHypothesis(Hypothesis):
     """Complete translation hypotheses are represented by an instance
@@ -82,8 +83,11 @@ class SimPartialHypothesis(PartialHypothesis):
     def expand(self, word, new_states, score, score_breakdown):
         """Call parent method ``expand()`` and append WRITE action
         """
-        hypo = super(SimPartialHypothesis, self).expand(word, score,
-                                                        score_breakdown)
+        hypo = SimPartialHypothesis(new_states)
+        hypo.score = self.score + score
+        hypo.score_breakdown = copy.copy(self.score_breakdown)
+        hypo.trgt_sentence = self.trgt_sentence + [word]
+        hypo.add_score_breakdown(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
         return hypo
@@ -91,8 +95,12 @@ class SimPartialHypothesis(PartialHypothesis):
     def cheap_expand(self, word, score, score_breakdown):
         """Call parent method ``cheap_expand()`` and append WRITE action
         """
-        hypo = super(SimPartialHypothesis, self).cheap_expand(word, score,
-                                                              score_breakdown)
+        hypo = SimPartialHypothesis(self.predictor_states)
+        hypo.score = self.score + score
+        hypo.score_breakdown = copy.copy(self.score_breakdown)
+        hypo.trgt_sentence = self.trgt_sentence + [word]
+        hypo.word_to_consume = word
+        hypo.add_score_breakdown(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
         return hypo

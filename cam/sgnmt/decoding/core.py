@@ -14,7 +14,7 @@ from cam.sgnmt.utils import Observable, Observer, MESSAGE_TYPE_DEFAULT, \
 import numpy as np
 import logging
 
-class Hypothesis:
+class Hypothesis(object):
     """Complete translation hypotheses are represented by an instance
     of this class. We store the produced sentence, the combined score,
     and a score breakdown to the separate predictor scores.
@@ -82,7 +82,7 @@ class Hypothesis:
         return chypo
 
 
-class PartialHypothesis:
+class PartialHypothesis(object):
     """Represents a partial hypothesis in various decoders. """
     
     def __init__(self, initial_states = None):

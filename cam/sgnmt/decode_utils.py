@@ -21,6 +21,7 @@ from cam.sgnmt.blocks.nmt import blocks_get_nmt_predictor, \
 from cam.sgnmt.decoding import core
 from cam.sgnmt.decoding.astar import AstarDecoder
 from cam.sgnmt.decoding.beam import BeamDecoder
+from cam.sgnmt.decoding.simbeam import SimBeamDecoder
 from cam.sgnmt.decoding.bigramgreedy import BigramGreedyDecoder
 from cam.sgnmt.decoding.bow import BOWDecoder
 from cam.sgnmt.decoding.bucket import BucketDecoder
@@ -59,6 +60,7 @@ from cam.sgnmt.predictors.vocabulary import IdxmapPredictor, \
 from cam.sgnmt.predictors.ngram import SRILMPredictor
 from cam.sgnmt.predictors.tf_t2t import T2TPredictor, T2TBFSLayerbylayerPredictor, \
                                         T2TDFSLayerbylayerPredictor
+from cam.sgnmt.predictors.sim_t2t import SimT2TPredictor
 from cam.sgnmt.predictors.tokenization import Word2charPredictor, FSTTokPredictor
 from cam.sgnmt.tf.interface import tf_get_nmt_predictor, tf_get_nmt_vanilla_decoder, \
     tf_get_rnnlm_predictor, tf_get_default_nmt_config, tf_get_rnnlm_prefix
@@ -170,6 +172,17 @@ def add_predictors(decoder):
                     logging.fatal("NMT engine %s is not supported (yet)!" % nmt_engine)
             elif pred == "t2t":
                 p = T2TPredictor(_get_override_args("t2t_src_vocab_size"),
+                                 _get_override_args("t2t_trg_vocab_size"),
+                                 _get_override_args("t2t_model"),
+                                 _get_override_args("t2t_problem"),
+                                 _get_override_args("t2t_hparams_set"),
+                                 args.t2t_usr_dir,
+                                 _get_override_args("t2t_checkpoint_dir"),
+                                 single_cpu_thread=args.single_cpu_thread,
+                                 max_terminal_id=args.syntax_max_terminal_id,
+                                 pop_id=args.syntax_pop_id)
+            elif pred == "simt2t":
+                p = SimT2TPredictor(_get_override_args("t2t_src_vocab_size"),
                                  _get_override_args("t2t_trg_vocab_size"),
                                  _get_override_args("t2t_model"),
                                  _get_override_args("t2t_problem"),
@@ -396,6 +409,8 @@ def create_decoder(new_args):
         decoder = GreedyDecoder(args)
     elif args.decoder == "beam":
         decoder = BeamDecoder(args)
+    elif args.decoder == "simbeam":
+        decoder = SimBeamDecoder(args)
     elif args.decoder == "multisegbeam":
         decoder = MultisegBeamDecoder(args,
                                       args.hypo_recombination,

@@ -349,6 +349,7 @@ def get_parser():
     group.add_argument("--decoder", default="beam",
                         choices=['greedy',
                                  'beam',
+								 'simbeam',
                                  'multisegbeam',
                                  'syncbeam',
                                  'sepbeam',

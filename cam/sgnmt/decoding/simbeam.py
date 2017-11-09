@@ -4,7 +4,8 @@ import copy
 import logging
 
 from cam.sgnmt import utils
-from cam.sgnmt.decoding.sim_hypo import Decoder, SimPartialHypothesis
+from cam.sgnmt.decoding.core import Decoder
+from cam.sgnmt.decoding.sim_hypo import SimPartialHypothesis
 import numpy as np
 
 try:
@@ -69,7 +70,7 @@ class SimBeamDecoder(Decoder):
             self.stop_criterion = self._all_eos
         self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
         # log(second best probable) / log(most probable)
-        self.confidence_bound = 2.0
+        self.confidence_bound = 100.0
 
     def _get_combined_score(self, hypo):
         """Combines hypo score with future cost estimates."""
@@ -190,7 +191,7 @@ class SimBeamDecoder(Decoder):
             hypo.word_to_consume = None
         posterior, _ = self.apply_predictors()
         top = utils.argmax_n(posterior, self.beam_size)
-        return posterior[top[1]]/posterior[top[0]] > confidence_bound
+        return posterior[top[1]]/posterior[top[0]] > self.confidence_bound
 
     def decode(self, src_sentence):
         """Decodes a single source sentence using beam search.
@@ -198,22 +199,24 @@ class SimBeamDecoder(Decoder):
         is confident on translation, the decoder will expand the hypothesis.
         Otherwise, the decoder will reveal the next word to the predictor.
         """
-        self.initialize_predictors(src_sentence[0]) # use the first word only
+        self.initialize_predictors([src_sentence[0]]) # use the first word only
         progress = 1
         hypos = self._get_initial_hypos()
+        self.max_len = 3*len(src_sentence)
         it = 0
         while self.stop_criterion(hypos):
             if it > self.max_len: # prevent infinite loops
+                logging.info("max iteration %d" % self.max_len)
                 break
             it = it + 1
 
-            if not _get_prediction_confidence(hypos[0])
-                    and progress < len(src_sentence):
+            if not self._get_prediction_confidence(hypos[0]) and \
+					progress < len(src_sentence):
                 # not confident on prediction, reveal the next word
-                _reveal_source_word(src_sentence[progress], hypos)
+                self._reveal_source_word(src_sentence[progress], hypos)
                 progress += 1;
                 if progress == len(src_sentence): # reach the EOS
-                    _reveal_source_word(text_encoder.EOS_ID, hypos)
+                    self._reveal_source_word(text_encoder.EOS_ID, hypos)
             else:
                 # confident on prediction, expand hypos
                 next_hypos = []
@@ -231,11 +234,12 @@ class SimBeamDecoder(Decoder):
                             next_hypos.append(next_hypo)
                             next_scores.append(next_score)
                             self._register_score(next_score)
+
                 if self.hypo_recombination:
                     hypos = self._filter_equal_hypos(next_hypos, next_scores)
                 else:
                     hypos = self._get_next_hypos(next_hypos, next_scores)
-
+        logging.info("Processed source %d / %d" % (progress, len(src_sentence)))
         for hypo in hypos:
             if hypo.get_last_word() == utils.EOS_ID:
                 self.add_full_hypo(hypo.generate_full_hypothesis())

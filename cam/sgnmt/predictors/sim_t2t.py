@@ -16,9 +16,9 @@ import logging
 import os
 
 from cam.sgnmt import utils
-from cam.sgnmt.predictors.tf.t2t import expand_input_dims_for_t2t
-from cam.sgnmt.predictors.tf.t2t import _BaseTensor2TensorPredictor
-from cam.sgnmt.predictors.tf.t2t import log_prob_from_logits
+from cam.sgnmt.predictors.tf_t2t import expand_input_dims_for_t2t
+from cam.sgnmt.predictors.tf_t2t import _BaseTensor2TensorPredictor
+from cam.sgnmt.predictors.tf_t2t import log_prob_from_logits
 
 
 POP = "##POP##"
@@ -26,13 +26,20 @@ POP = "##POP##"
 
 try:
     # Requires tensor2tensor
+    from tensor2tensor.utils import trainer_utils
+    from tensor2tensor.utils import usr_dir
+    from tensor2tensor.utils import registry
+    from tensor2tensor.utils import devices
+    from tensor2tensor.data_generators import text_encoder
+    import tensorflow as tf
     from cam.sgnmt.predictors.tf_t2t import DummyTextEncoder
-
+    """
     # Define flags from the t2t binaries
     flags = tf.flags
     FLAGS = flags.FLAGS
     flags.DEFINE_string("schedule", "train_and_evaluate",
                         "Method of tf.contrib.learn.Experiment to run.")
+    """
 except ImportError:
     pass # Deal with it in decode.py
 
