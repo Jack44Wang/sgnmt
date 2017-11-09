@@ -1,11 +1,9 @@
 # SGNMT
 
-TEST
-
 SGNMT is an open-source framework for neural machine translation (NMT) and other sequence prediction
-tasks. The tool provides a flexible platform which allows pairing NMT with various other models such 
+tasks. The tool provides a flexible platform which allows pairing NMT with various other models such
 as language models, length models, or bag2seq models. It supports rescoring both n-best lists and lattices.
-A wide variety of search strategies is available for complex decoding problems. 
+A wide variety of search strategies is available for complex decoding problems.
 
 SGNMT is compatible with multiple NMT implementations based on [Theano](http://deeplearning.net/software/theano/)
 ([Blocks](http://blocks.readthedocs.io/en/latest/)) and [TensorFlow](https://www.tensorflow.org/) (the
@@ -40,4 +38,3 @@ Felix Stahlberg, Eva Hasler, Danielle Saunders, and Bill Byrne.
 SGNMT - A Flexible NMT Decoding Platform for Quick Prototyping of New Models and Search Strategies.
 In *Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing (EMNLP 17 Demo Session)*, September 2017. Copenhagen, Denmark.
 [arXiv](https://arxiv.org/abs/1707.06885)
- 
