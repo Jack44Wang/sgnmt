@@ -38,7 +38,9 @@ from cam.sgnmt.decoding.multisegbeam import MultisegBeamDecoder
 from cam.sgnmt.decoding.restarting import RestartingDecoder
 from cam.sgnmt.decoding.sepbeam import SepBeamDecoder
 from cam.sgnmt.decoding.syncbeam import SyncBeamDecoder
+from cam.sgnmt.decoding.sim_hypo import SimHypothesis
 from cam.sgnmt.output import TextOutputHandler, \
+                             DelayOutputHandler, \
                              NBestOutputHandler, \
                              FSTOutputHandler, \
                              StandardFSTOutputHandler
@@ -584,6 +586,8 @@ def create_output_handlers():
             path = args.output_path
         if name == "text":
             outputs.append(TextOutputHandler(path, trg_map))
+        elif name == "delay":
+            outputs.append(DelayOutputHandler(path))
         elif name == "nbest":
             outputs.append(NBestOutputHandler(path, args.predictors.split(","),
                                               start_sen_id,
@@ -635,6 +639,12 @@ def _get_text_output_handler(output_handlers):
             return output_handler
     return None
 
+def _get_delay_output_handler(output_handlers):
+    for output_handler in output_handlers:
+        if isinstance(output_handler, DelayOutputHandler):
+            return output_handler
+    return None
+
 
 def do_decode(decoder, 
               output_handlers, 
@@ -657,8 +667,11 @@ def do_decode(decoder,
         return
     all_hypos = []
     text_output_handler = _get_text_output_handler(output_handlers)
+    delay_output_handler = _get_delay_output_handler(output_handlers)
     if text_output_handler:
         text_output_handler.open_file()
+    if delay_output_handler:
+        delay_output_handler.open_file()
     start_time = time.time()
     logging.info("Start time: %s" % start_time)
     for sen_idx in _get_sentence_indices(args.range, src_sentences):
@@ -700,6 +713,8 @@ def do_decode(decoder,
                                         time.time() - start_hypo_time))
                 if text_output_handler:
                     text_output_handler.write_empty_line()
+                if delay_output_handler:
+                    delay_output_handler.write_empty_line()
                 continue
             if args.remove_eos:
                 for hypo in hypos:
@@ -721,6 +736,9 @@ def do_decode(decoder,
                     sen_idx+1,
                     utils.apply_trg_wmap(hypos[0].trgt_sentence, 
                                          {} if utils.trg_cmap else utils.trg_wmap)))
+            if isinstance(hypos[0], SimHypothesis):
+                logging.info("Average delay: %f, Consecutive wait: %d " % (
+                    hypos[0].get_average_delay(), hypos[0].get_consecutive_wait()))
             logging.info("Stats (ID: %d): score=%f "
                          "num_expansions=%d "
                          "time=%.2f" % (sen_idx+1,
@@ -732,6 +750,8 @@ def do_decode(decoder,
                 # Write text output as we go
                 if text_output_handler:
                     text_output_handler.write_hypos([hypos])
+                if delay_output_handler:
+                    delay_output_handler.write_hypos([hypos])
             except IOError as e:
                 logging.error("I/O error %d occurred when creating output files: %s"
                             % (sys.exc_info()[0], e))
@@ -749,7 +769,8 @@ def do_decode(decoder,
     logging.info("Decoding finished. Time: %.2f" % (time.time() - start_time))
     try:
         for output_handler in output_handlers:
-            if output_handler == text_output_handler:
+            if output_handler == text_output_handler or \
+               output_handler == delay_output_handler:
                 output_handler.close_file()
             else:
                 output_handler.write_hypos(all_hypos)

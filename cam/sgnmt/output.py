@@ -78,6 +78,43 @@ class TextOutputHandler(OutputHandler):
             self.f.write("\n")
             self.f.flush()
 
+class DelayOutputHandler(OutputHandler):
+    """Writes the first best hypotheses to a plain text file """
+    
+    def __init__(self, path):
+        """Creates a plain text output handler to write to ``path`` """
+        super(DelayOutputHandler, self).__init__()
+        self.path = path
+        
+    def write_hypos(self, all_hypos):
+        """Writes the hypotheses in ``all_hypos`` to ``path`` """
+        if self.f is not None:
+            for hypos in all_hypos:
+                self.f.write(str(hypos[0].get_average_delay()))
+                self.f.write(" ")
+                self.f.write(str(hypos[0].get_consecutive_wait()))
+                self.f.write("\n")
+                self.f.flush()
+        else:
+            with codecs.open(self.path, "w", encoding='utf-8') as f:
+                for hypos in all_hypos:
+                    f.write(str(hypos[0].get_average_delay()))
+                    f.write(" ")
+                    f.write(str(hypos[0].get_consecutive_wait()))
+                    f.write("\n")
+                    self.f.flush()
+
+    def open_file(self):
+        self.f = codecs.open(self.path, "w", encoding='utf-8')
+
+    def close_file(self):
+        self.f.close()
+
+    def write_empty_line(self):
+        if self.f is not None:
+            self.f.write("\n")
+            self.f.flush()
+
 
 class NBestOutputHandler(OutputHandler):
     """Produces a n-best file in Moses format. The third part of each 

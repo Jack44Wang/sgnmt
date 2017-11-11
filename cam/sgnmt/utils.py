@@ -102,6 +102,15 @@ def log_sum_log_semiring(vals):
     """
     return logsumexp(numpy.asarray([val for val in vals]))
 
+def entropy(log_probs):
+    """Computes the entropy given the log-probabilities"""
+    arr = numpy.asarray(log_probs)
+    # handles 0 probability which is -inf
+    arr[arr==-numpy.inf] = 0
+    temp = -numpy.sum(numpy.exp(arr)*arr)
+    # logging.info("current entropy is: %f" % temp)
+    return temp
+
 
 #log_sum = log_sum_log_semiring
 log_sum = log_sum_log_semiring

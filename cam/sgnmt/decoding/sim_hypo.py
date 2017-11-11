@@ -3,6 +3,7 @@ simultaneous translation.
 """
 
 import copy
+import logging
 from cam.sgnmt.decoding.core import Hypothesis, PartialHypothesis
 
 class SimHypothesis(Hypothesis):
@@ -28,6 +29,7 @@ class SimHypothesis(Hypothesis):
                                             total_score,
                                             score_breakdown)
         self.actions = actions
+        self.actions.pop() # remove the last 'w'
 
     def get_average_delay(self):
         """Return the average delay based on the set of actions taken.
@@ -35,12 +37,13 @@ class SimHypothesis(Hypothesis):
         """
         current_delay = 0
         cum_delay = 0
+        logging.info(self.actions)
         for action in self.actions:
-            if action == 'R':
+            if action == 'r':
                 current_delay += 1
             else:
                 cum_delay += current_delay
-        return cum_delay / (current_delay*(len(self.actions)-current_delay))
+        return 1.0*cum_delay / (current_delay*(len(self.actions)-current_delay))
 
     def get_consecutive_wait(self):
         """Return the longest wait length (longest consecutive READs)
@@ -50,7 +53,7 @@ class SimHypothesis(Hypothesis):
         max_delay = 0
         current_delay = 0
         for action in self.actions:
-            if action == 'R':
+            if action == 'r':
                 current_delay += 1
                 if current_delay > max_delay:
                     max_delay = current_delay
@@ -69,7 +72,7 @@ class SimPartialHypothesis(PartialHypothesis):
             initial_states: Initial predictor states
         """
         super(SimPartialHypothesis, self).__init__(initial_states)
-        self.actions = []
+        self.actions = ['r']
 
     def generate_full_hypothesis(self):
         """Create a ``SimHypothesis`` instance from this hypothesis. """

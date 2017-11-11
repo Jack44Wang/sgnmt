@@ -50,7 +50,8 @@ class SimBeamDecoder(Decoder):
 
         Args:
             decoder_args (object): Decoder configuration passed through
-                                   from the configuration API.
+                                   frlogging.fatal("Diversity promoting beam search is not implemented "
+                          "yet")om the configuration API.
         """
         super(SimBeamDecoder, self).__init__(decoder_args)
         self.diversity_factor = decoder_args.decoder_diversity_factor
@@ -70,7 +71,7 @@ class SimBeamDecoder(Decoder):
             self.stop_criterion = self._all_eos
         self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
         # log(second best probable) / log(most probable)
-        self.confidence_bound = 100.0
+        self.entropy_bound = 0.0
 
     def _get_combined_score(self, hypo):
         """Combines hypo score with future cost estimates."""
@@ -178,20 +179,24 @@ class SimBeamDecoder(Decoder):
             p.reveal(word) # May change predictor state
         for hypo in hypos:
             if hypo.get_last_word() != utils.EOS_ID:
-                hypo.append_action()
+                # EOS is the additional word
+                if not word == text_encoder.EOS_ID:
+                    hypo.append_action()
+                hypo.predictor_states = self.get_predictor_states()
 
     def _get_prediction_confidence(self, hypo):
-        """Get the condidence of predictions from ``predict_next()``
+        """Get the condidence of predictions frodictionary-valuem ``predict_next()``
         Looking at the best hypothesis so far, returns TRUE if confident
         """
         # set the predictor state to the one in our best hypothesis
+        predictor_state_save = copy.deepcopy(self.get_predictor_states())
         self.set_predictor_states(copy.deepcopy(hypo.predictor_states))
         if not hypo.word_to_consume is None: # Consume if cheap expand
+            # did not modify hypo, so not setting word_to_consume to None
             self.consume(hypo.word_to_consume)
-            hypo.word_to_consume = None
         posterior, _ = self.apply_predictors()
-        top = utils.argmax_n(posterior, self.beam_size)
-        return posterior[top[1]]/posterior[top[0]] > self.confidence_bound
+        self.set_predictor_states(predictor_state_save) # restore states
+        return utils.entropy(list(posterior.values())) < self.entropy_bound
 
     def decode(self, src_sentence):
         """Decodes a single source sentence using beam search.
@@ -202,7 +207,7 @@ class SimBeamDecoder(Decoder):
         self.initialize_predictors([src_sentence[0]]) # use the first word only
         progress = 1
         hypos = self._get_initial_hypos()
-        self.max_len = 3*len(src_sentence)
+        self.max_len = 2.5*len(src_sentence)
         it = 0
         while self.stop_criterion(hypos):
             if it > self.max_len: # prevent infinite loops
@@ -239,6 +244,7 @@ class SimBeamDecoder(Decoder):
                     hypos = self._filter_equal_hypos(next_hypos, next_scores)
                 else:
                     hypos = self._get_next_hypos(next_hypos, next_scores)
+
         logging.info("Processed source %d / %d" % (progress, len(src_sentence)))
         for hypo in hypos:
             if hypo.get_last_word() == utils.EOS_ID:
