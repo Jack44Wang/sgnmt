@@ -71,7 +71,7 @@ class SimBeamDecoder(Decoder):
             self.stop_criterion = self._all_eos
         self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
         # log(second best probable) / log(most probable)
-        self.entropy_bound = 0.0
+        self.entropy_bound = 5.0
 
     def _get_combined_score(self, hypo):
         """Combines hypo score with future cost estimates."""
@@ -173,16 +173,30 @@ class SimBeamDecoder(Decoder):
     def _reveal_source_word(self, word, hypos):
         """Reveal one source word to the predictor.
         Calls ``reveal()`` on all simultaneous predictors.
-        Append READ action to all ongoing hypothesis.
+        Append READ action to the best hypothesis.
+        Discard ALL other hypothesis (translation has been produced,
+        cannot go back and correct itself).
         """
         for (p, _) in self.predictors:
-            p.reveal(word) # May change predictor state
+            p.reveal(word) # May change predictor
+
+        if hypos[0].get_last_word() != utils.EOS_ID:
+            # EOS is the additional word
+            if not word == text_encoder.EOS_ID:
+                hypos[0].append_action()
+            hypos[0].predictor_states = self.get_predictor_states()
+            # decide to read, commit current beam search (keep the best one)
+            hypos = [hypos[0]] 
+        else:
+            logging.warn("Simultaneous translation should stop!")
+        """
         for hypo in hypos:
             if hypo.get_last_word() != utils.EOS_ID:
                 # EOS is the additional word
                 if not word == text_encoder.EOS_ID:
                     hypo.append_action()
                 hypo.predictor_states = self.get_predictor_states()
+        """
 
     def _get_prediction_confidence(self, hypo):
         """Get the condidence of predictions frodictionary-valuem ``predict_next()``
@@ -209,21 +223,26 @@ class SimBeamDecoder(Decoder):
         hypos = self._get_initial_hypos()
         self.max_len = 2.5*len(src_sentence)
         it = 0
+        read = 0
+        write = 0
         while self.stop_criterion(hypos):
             if it > self.max_len: # prevent infinite loops
                 logging.info("max iteration %d" % self.max_len)
                 break
             it = it + 1
 
-            if not self._get_prediction_confidence(hypos[0]) and \
-					progress < len(src_sentence):
-                # not confident on prediction, reveal the next word
+            if progress < len(src_sentence) and (write > read or \
+                not self._get_prediction_confidence(hypos[0]) ):
+                # not confident on prediction, or produced too many words,
+                # reveal the next word
                 self._reveal_source_word(src_sentence[progress], hypos)
-                progress += 1;
+                progress += 1
+                read += 1
                 if progress == len(src_sentence): # reach the EOS
                     self._reveal_source_word(text_encoder.EOS_ID, hypos)
             else:
                 # confident on prediction, expand hypos
+                write += 1
                 next_hypos = []
                 next_scores = []
                 self.min_score = utils.NEG_INF
