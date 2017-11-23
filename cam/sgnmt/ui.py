@@ -1,4 +1,4 @@
-"""This module handles configuration and user interface when using 
+"""This module handles configuration and user interface when using
 blocks. ``yaml`` and ``ArgumentParser`` are used for parsing config
 files and command line arguments.
 
@@ -44,7 +44,7 @@ def parse_args(parser):
 
 
 def parse_param_string(param):
-    """Parses a parameter string such as 'param1=x,param2=y'. Loads 
+    """Parses a parameter string such as 'param1=x,param2=y'. Loads
     config files if specified in the string. If ``param`` points to a
     file, load this file with YAML.
     """
@@ -132,22 +132,22 @@ def get_blocks_train_parser():
     parser.add_argument("--learning_rate", default=0.002, type=float,
                         help="Learning rate for AdaGrad and Adam")
     parser.add_argument("--prune_every", default=-1, type=int,
-                        help="Prune model every n iterations. Pruning is " 
+                        help="Prune model every n iterations. Pruning is "
                         "disabled if this is < 1")
     parser.add_argument("--prune_reset_every", default=-1, type=int,
-                        help="Reset pruning statistics every n iterations. If " 
+                        help="Reset pruning statistics every n iterations. If "
                         "set to -1, use --prune_every")
     parser.add_argument("--prune_n_steps", default=10, type=int,
                         help="Number of pruning steps until the target layer "
                         "sizes should be reached")
-    parser.add_argument("--prune_layers",  
+    parser.add_argument("--prune_layers",
                         default="encfwdgru:1000,encbwdgru:1000,decgru:1000",
                         help="A comma separated list of <layer>:<size> pairs. "
                         "<layer> is one of 'encfwdgru', 'encbwdgru', 'decgru',"
                         " 'decmaxout' which should be shrunk to <size> during "
                         "training. Pruned neurons are marked by setting all "
                         "in- and output connection to zero.")
-    parser.add_argument("--prune_layout_path",  
+    parser.add_argument("--prune_layout_path",
                         default="prune.layout",
                         help="Points to a file which defines which weight "
                         "matrices are connected to which prunable layers. The "
@@ -169,7 +169,7 @@ def get_blocks_align_parser():
     """Get the parser object for NMT alignment configuration. """
     parser = argparse.ArgumentParser()
     parser.register('type','bool',str2bool)
-    
+
     parser.add_argument("--iterations", default=50, type=int,
                         help="Number of optimization iterations for each token")
     parser.add_argument("--nmt_model_selector", default="bleu",
@@ -200,7 +200,7 @@ def get_blocks_align_parser():
                         "* 'csv': Plain text file with alignment matrix\n"
                         "* 'npy': Alignment matrices in numpy's npy format\n"
                         "* 'align': Usual (Pharaoh) alignment format.\n")
-    
+
     blocks_add_nmt_config(parser)
     return parser
 
@@ -209,7 +209,7 @@ def get_blocks_batch_decode_parser():
     """Get the parser object for NMT batch decoding. """
     parser = argparse.ArgumentParser()
     parser.register('type','bool',str2bool)
-    
+
     parser.add_argument("--src_test", default="test_en",
                         help="Path to source test set. This is expected to be "
                         "a plain text file with one source sentence in each "
@@ -230,7 +230,7 @@ def get_blocks_batch_decode_parser():
                         help="The CPU scheduler starts to construct small "
                         "jobs when the total number of jobs in the pipelines "
                         "is below this threshold. This prevents the computation "
-                        "thread from being idle, at the cost of smaller " 
+                        "thread from being idle, at the cost of smaller "
                         "batches")
     parser.add_argument("--max_tasks_per_job", default=450, type=int,
                         help="The maximum number of tasks in a single decoder "
@@ -260,7 +260,7 @@ def get_blocks_batch_decode_parser():
                         "padding.")
     parser.add_argument("--beam", default=5, type=int,
                         help="Size of the beam.")
-    
+
     blocks_add_nmt_config(parser)
     return parser
 
@@ -269,16 +269,16 @@ def get_parser():
     """Get the parser object which is used to build the configuration
     argument ``args``. This is a helper method for ``get_args()``
     TODO: Decentralize configuration
-    
+
     Returns:
         ArgumentParser. The pre-filled parser object
     """
     parser = argparse.ArgumentParser()
     parser.register('type','bool',str2bool)
-    
+
     ## General options
     group = parser.add_argument_group('General options')
-    group.add_argument('--config_file', 
+    group.add_argument('--config_file',
                         help="Configuration file in standard .ini format. NOTE:"
                         " Configuration file overrides command line arguments",
                         type=argparse.FileType(mode='r'))
@@ -339,7 +339,7 @@ def get_parser():
                         help="If true, try to prevent libraries like Theano "
                         "or TensorFlow from doing internal multithreading. "
                         "Also, see the OMP_NUM_THREADS environment variable.")
-    
+
     ## Decoding options
     group = parser.add_argument_group('Decoding options')
     group.add_argument("--beam", default=12, type=int,
@@ -350,6 +350,7 @@ def get_parser():
                         choices=['greedy',
                                  'beam',
 								 'simbeam',
+                                 'simbeam_v2',
                                  'multisegbeam',
                                  'syncbeam',
                                  'sepbeam',
@@ -643,9 +644,9 @@ def get_parser():
                         "to character sequence is read from --trg_wmap. The "
                         "char map must contain an entry for </w> which points "
                         "to the word boundary ID.")
-    
+
     ## Predictor options
-    
+
     # General
     group = parser.add_argument_group('General predictor options')
     group.add_argument("--predictors", default="nmt",
@@ -756,7 +757,7 @@ def get_parser():
                         "for ensembling three NMT systems. You can often "
                         "override parts of the predictor configurations for "
                         "subsequent predictors by adding the predictor "
-                        "number (e.g. see --nmt_config2 or --fst_path2)")    
+                        "number (e.g. see --nmt_config2 or --fst_path2)")
     group.add_argument("--predictor_weights", default="",
                         help="Predictor weights. Have to be specified "
                         "consistently with --predictor, e.g. if --predictor is"
@@ -795,13 +796,13 @@ def get_parser():
                         "* 'bayesian': Apply the Bayesian LM interpolation "
                         "scheme from Allauzen and Riley to interpolate the "
                         "predictor scores")
-    group.add_argument("--apply_combination_scheme_to_partial_hypos", 
+    group.add_argument("--apply_combination_scheme_to_partial_hypos",
                         default=False, type='bool',
                         help="If true, apply the combination scheme specified "
                         "with --combination_scheme after each node expansion. "
                         "If false, apply it only to complete hypotheses at "
                         "the end of decoding")
-    
+
     # Neural predictors
     group = parser.add_argument_group('Neural predictor options')
     group.add_argument("--length_normalization", default=False, type='bool',
@@ -850,7 +851,7 @@ def get_parser():
                        help="If this is greater than zero, add a coverage "
                        "penalization term following Google's NMT (Wu et al., "
                        "2016) to the NMT score.")
-    group.add_argument("--layerbylayer_terminal_strategy", default="force", 
+    group.add_argument("--layerbylayer_terminal_strategy", default="force",
                         choices=['none', 'force', 'skip'],
                         help="Strategy for dealing with terminals as parents "
                         "in layerbylayer predictors with POP attention.\n"
@@ -929,7 +930,7 @@ def get_parser():
                         "length distributions for each sentence. Each line "
                         "consists of blank separated '<length>:<logprob>' "
                         "pairs.")
-    
+
     # UNK count predictors
     group = parser.add_argument_group('Count predictor options')
     group.add_argument("--unk_count_lambdas", default="1.0",
@@ -974,9 +975,9 @@ def get_parser():
                         "This is only required for the predictors 'forced' "
                         "and 'forcedlst'. For 'forcedlst' this needs to point "
                         "to an n-best list in Moses format.")
-    group.add_argument("--fr_test", default="", 
+    group.add_argument("--fr_test", default="",
                         help="DEPRECATED. Old name for --trg_test")
-    group.add_argument("--forcedlst_sparse_feat", default="", 
+    group.add_argument("--forcedlst_sparse_feat", default="",
                         help="Per default, the forcedlst predictor uses the "
                         "combined score in the Moses nbest list. Alternatively,"
                         " for nbest lists in sparse feature format, you can "
@@ -1015,7 +1016,7 @@ def get_parser():
                        "between bags via the bow predictor heuristic. Bags "
                        "which correspond to bags of partial bags of full "
                        "hypotheses are penalized by this factor.")
-    
+
     # Wrappers
     group = parser.add_argument_group('Wrapper predictor options')
     group.add_argument("--src_idxmap", default="idxmap.en",
@@ -1069,7 +1070,7 @@ def get_parser():
                         "sum for them. You can specify the weights for this "
                         "summation here (comma-separated) or leave it blank "
                         "to sum them up equally weighted.")
-    
+
     # (NP)LM predictors
     group = parser.add_argument_group('(Neural) LM predictor options')
     group.add_argument("--srilm_path", default="lm/ngram.lm.gz",
@@ -1093,7 +1094,7 @@ def get_parser():
     group.add_argument("--normalize_nplm_probs", default=False, type='bool',
                         help="Whether to normalize nplm probabilities over "
                         "the current unbounded predictor vocabulary.")
-    
+
     # Automaton predictors
     group = parser.add_argument_group('FST and RTN predictor options')
     group.add_argument("--fst_path", default="fst/%d.fst",
@@ -1137,8 +1138,8 @@ def get_parser():
 
     # Adding arguments for overriding when using same predictor multiple times
     group = parser.add_argument_group('Override options')
-    for n,w in [('2', 'second'), ('3', 'third'), ('4', '4-th'), ('5', '5-th'), 
-                ('6', '6-th'), ('7', '7-th'), ('8', '8-th'), ('9', '9-th'), 
+    for n,w in [('2', 'second'), ('3', 'third'), ('4', '4-th'), ('5', '5-th'),
+                ('6', '6-th'), ('7', '7-th'), ('8', '8-th'), ('9', '9-th'),
                 ('10', '10-th'), ('11', '11-th'), ('12', '12-th')]:
         group.add_argument("--nmt_config%s" % n,  default="",
                         help="If the --predictors string contains more than "
@@ -1177,7 +1178,7 @@ def get_parser():
         group.add_argument("--rnnlm_path%s" % n, default="",
                         help="Overrides --rnnlm_path for the %s nmt" % w)
         group.add_argument("--src_test%s" % n, default="",
-                        help="Overrides --src_test for the %s src" % w)                        
+                        help="Overrides --src_test for the %s src" % w)
         group.add_argument("--altsrc_test%s" % n, default="",
                         help="Overrides --altsrc_test for the %s altsrc" % w)
         group.add_argument("--word2char_map%s" % n, default="",
@@ -1208,13 +1209,13 @@ def get_args():
     by predictors. Additionally, we add blocks NMT model options as
     parameters to specify how the loaded NMT model was trained. These
     are defined in ``machine_translation.configurations``.
-    
+
     Returns:
         object. Arguments object like for ``ArgumentParser``
-    """ 
+    """
     parser = get_parser()
     args = parse_args(parser)
-    
+
     # Legacy parameter names
     if args.en_test:
         args.src_test = args.en_test
@@ -1229,7 +1230,7 @@ def get_args():
     if args.legacy_indexing:
         args.indexing_scheme = "tf"
     if args.output_fst_unk_id:
-        args.fst_unk_id = args.output_fst_unk_id 
+        args.fst_unk_id = args.output_fst_unk_id
     return args
 
 
@@ -1237,7 +1238,7 @@ def validate_args(args):
     """Some rudimentary sanity checks for configuration options.
     This method directly prints help messages to the user. In case of fatal
     errors, it terminates using ``logging.fatal()``
-    
+
     Args:
         args (object):  Configuration as returned by ``get_args``
     """
@@ -1259,7 +1260,7 @@ def validate_args(args):
                     logging.fatal("Start index in range greater than end index")
             except:
                 pass # Deal with it later
-        
+
     # Some common pitfalls
     if args.input_method == 'dummy' and args.max_len_factor < 10:
         logging.warn("You are using the dummy input method but a low value "
@@ -1273,4 +1274,3 @@ def validate_args(args):
                      "with early stopping. All hypotheses found with beam "
                      "search with early stopping have the same length. You "
                      "might want to disable early stopping.")
-
