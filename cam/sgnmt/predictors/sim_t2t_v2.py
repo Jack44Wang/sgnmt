@@ -44,7 +44,7 @@ except ImportError:
     pass # Deal with it in decode.py
 
 
-class SimT2TPredictor(_BaseTensor2TensorPredictor):
+class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
     """This predictor implements scoring with Tensor2Tensor models. We
     follow the decoder implementation in T2T and do not reuse network
     states in decoding. We rather compute the full forward pass along
@@ -93,7 +93,7 @@ class SimT2TPredictor(_BaseTensor2TensorPredictor):
             pop_id (int): If positive, ID of the POP or closing bracket symbol.
                 Needs to be set for syntax-based T2T models.
         """
-        super(SimT2TPredictor, self).__init__(t2t_usr_dir,
+        super(SimT2TPredictor_v2, self).__init__(t2t_usr_dir,
                                            checkpoint_dir,
                                            t2t_unk_id,
                                            single_cpu_thread)
@@ -216,6 +216,7 @@ class SimT2TPredictor(_BaseTensor2TensorPredictor):
         hidden_states = self.mon_sess.run(self._hidden_states,
             {self._inputs_var: self.src_sentence,
              self._targets_var: self.consumed + [text_encoder.PAD_ID]})
+        logging.info("hidden_states size %s." % tf.size(hidden_states))
         return hidden_states
 
     def get_state(self):

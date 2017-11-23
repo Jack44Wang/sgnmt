@@ -50,8 +50,7 @@ class SimBeamDecoder(Decoder):
 
         Args:
             decoder_args (object): Decoder configuration passed through
-                                   frlogging.fatal("Diversity promoting beam search is not implemented "
-                          "yet")om the configuration API.
+                                   from the configuration API.
         """
         super(SimBeamDecoder, self).__init__(decoder_args)
         self.diversity_factor = decoder_args.decoder_diversity_factor

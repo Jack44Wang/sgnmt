@@ -14,7 +14,7 @@ try:
 except ImportError:
     pass # Deal with it in decode.py
 
-class SimBeamDecoder(Decoder):
+class SimBeamDecoder_v2(Decoder):
     """This decoder implements standard beam search and several
     variants of it such as diversity promoting beam search and beam
     search with heuristic future cost estimates. This implementation
@@ -50,10 +50,9 @@ class SimBeamDecoder(Decoder):
 
         Args:
             decoder_args (object): Decoder configuration passed through
-                                   frlogging.fatal("Diversity promoting beam search is not implemented "
-                          "yet")om the configuration API.
+                                   from the configuration API.
         """
-        super(SimBeamDecoder, self).__init__(decoder_args)
+        super(SimBeamDecoder_v2, self).__init__(decoder_args)
         self.diversity_factor = decoder_args.decoder_diversity_factor
         self.diverse_decoding = (self.diversity_factor > 0.0)
         if self.diversity_factor > 0.0:
@@ -179,6 +178,7 @@ class SimBeamDecoder(Decoder):
         """
         for (p, _) in self.predictors:
             p.reveal(word) # May change predictor
+            p.get_hidden_state() # try calling the get_hidden_state function
 
         if hypos[0].get_last_word() != utils.EOS_ID:
             # EOS is the additional word
@@ -189,14 +189,6 @@ class SimBeamDecoder(Decoder):
             hypos = [hypos[0]]
         else:
             logging.warn("Simultaneous translation should stop!")
-        """
-        for hypo in hypos:
-            if hypo.get_last_word() != utils.EOS_ID:
-                # EOS is the additional word
-                if not word == text_encoder.EOS_ID:
-                    hypo.append_action()
-                hypo.predictor_states = self.get_predictor_states()
-        """
 
     def _get_prediction_entropy(self, hypo):
         """Get the condidence of predictions from ``predict_next()``

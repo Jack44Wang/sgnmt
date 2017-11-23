@@ -22,6 +22,7 @@ from cam.sgnmt.decoding import core
 from cam.sgnmt.decoding.astar import AstarDecoder
 from cam.sgnmt.decoding.beam import BeamDecoder
 from cam.sgnmt.decoding.simbeam import SimBeamDecoder
+from cam.sgnmt.decoding.simbeam_v2 import SimBeamDecoder_v2
 from cam.sgnmt.decoding.bigramgreedy import BigramGreedyDecoder
 from cam.sgnmt.decoding.bow import BOWDecoder
 from cam.sgnmt.decoding.bucket import BucketDecoder
@@ -63,30 +64,31 @@ from cam.sgnmt.predictors.ngram import SRILMPredictor
 from cam.sgnmt.predictors.tf_t2t import T2TPredictor, T2TBFSLayerbylayerPredictor, \
                                         T2TDFSLayerbylayerPredictor
 from cam.sgnmt.predictors.sim_t2t import SimT2TPredictor
+from cam.sgnmt.predictors.sim_t2t_v2 import SimT2TPredictor_v2
 from cam.sgnmt.predictors.tokenization import Word2charPredictor, FSTTokPredictor
 from cam.sgnmt.tf.interface import tf_get_nmt_predictor, tf_get_nmt_vanilla_decoder, \
     tf_get_rnnlm_predictor, tf_get_default_nmt_config, tf_get_rnnlm_prefix
 
 
 args = None
-"""This variable is set to the global configuration when 
+"""This variable is set to the global configuration when
 create_decoder() is called.
 """
 
 _override_args_cnts = {}
 def _get_override_args(field):
-    """This is a helper function for arguments which can be overridden 
-    when using multiple instances of the same predictor. E.g., it is 
-    possible to use two fst predictors, and specify the path to the 
-    first directory with --fst_path, and the path to the second 
+    """This is a helper function for arguments which can be overridden
+    when using multiple instances of the same predictor. E.g., it is
+    possible to use two fst predictors, and specify the path to the
+    first directory with --fst_path, and the path to the second
     directory with --fst_path2.
-    
+
     Args:
-        field (string):  Field in ``args`` for which also field2, 
+        field (string):  Field in ``args`` for which also field2,
                          field3... is also possible
-    
+
     Returns:
-        object. If count smaller than 2, returns ``args.field``. 
+        object. If count smaller than 2, returns ``args.field``.
         Otherwise, returns ``args.field+count`` if specified, or backup
         to ``args.field``
     """
@@ -115,12 +117,12 @@ def _parse_config_param(field, default):
 
 
 def add_predictors(decoder):
-    """Adds all enabled predictors to the ``decoder``. This function 
+    """Adds all enabled predictors to the ``decoder``. This function
     makes heavy use of the global ``args`` which contains the
     SGNMT configuration. Particularly, it reads out ``args.predictors``
     and adds appropriate instances to ``decoder``.
     TODO: Refactor this method as it is waaaay tooooo looong
-    
+
     Args:
         decoder (Decoder):  Decoding strategy, see ``create_decoder()``.
             This method will add predictors to this instance with
@@ -138,12 +140,12 @@ def add_predictors(decoder):
                       "revise the --predictors and --predictor_weights "
                       "arguments" % (len(preds), len(weights)))
             return
-    
+
     pred_weight = 1.0
     try:
         for idx,pred in enumerate(preds): # Add predictors one by one
             wrappers = []
-            if '_' in pred: 
+            if '_' in pred:
                 # Handle weights when we have wrapper predictors
                 wrappers = pred.split('_')
                 pred = wrappers[-1]
@@ -184,6 +186,17 @@ def add_predictors(decoder):
                                  max_terminal_id=args.syntax_max_terminal_id,
                                  pop_id=args.syntax_pop_id)
             elif pred == "simt2t":
+                p = SimT2TPredictor(_get_override_args("t2t_src_vocab_size"),
+                                 _get_override_args("t2t_trg_vocab_size"),
+                                 _get_override_args("t2t_model"),
+                                 _get_override_args("t2t_problem"),
+                                 _get_override_args("t2t_hparams_set"),
+                                 args.t2t_usr_dir,
+                                 _get_override_args("t2t_checkpoint_dir"),
+                                 single_cpu_thread=args.single_cpu_thread,
+                                 max_terminal_id=args.syntax_max_terminal_id,
+                                 pop_id=args.syntax_pop_id)
+            elif pred == "simt2t_v2":
                 p = SimT2TPredictor(_get_override_args("t2t_src_vocab_size"),
                                  _get_override_args("t2t_trg_vocab_size"),
                                  _get_override_args("t2t_model"),
@@ -280,8 +293,8 @@ def add_predictors(decoder):
                                  minimize_rtns=args.minimize_rtns,
                                  rmeps=args.remove_epsilon_in_rtns)
             elif pred == "srilm":
-                p = SRILMPredictor(args.srilm_path, 
-                                   args.srilm_order, 
+                p = SRILMPredictor(args.srilm_path,
+                                   args.srilm_order,
                                    args.srilm_convert_to_ln)
             elif pred == "nplm":
                 p = NPLMPredictor(args.nplm_path, args.normalize_nplm_probs)
@@ -297,13 +310,13 @@ def add_predictors(decoder):
                                         args.ngramc_discount_factor)
             elif pred == "unkc":
                 p = UnkCountPredictor(
-                         args.unkc_src_vocab_size, 
+                         args.unkc_src_vocab_size,
                          [float(l) for l in args.unk_count_lambdas.split(',')])
             elif pred == "length":
-                length_model_weights = [float(w) for w in 
+                length_model_weights = [float(w) for w in
                                           args.length_model_weights.split(',')]
-                p = NBLengthPredictor(args.src_test_raw, 
-                                      length_model_weights, 
+                p = NBLengthPredictor(args.src_test_raw,
+                                      length_model_weights,
                                       args.use_length_point_probs,
                                       args.length_model_offset)
             elif pred == "extlength":
@@ -311,7 +324,7 @@ def add_predictors(decoder):
             elif pred == "lrhiero":
                 fw = None
                 if args.grammar_feature_weights:
-                    fw = [float(w) for w in 
+                    fw = [float(w) for w in
                             args.grammar_feature_weights.split(',')]
                 p = RuleXtractPredictor(args.rules_path,
                                         args.use_grammar_weights,
@@ -329,13 +342,13 @@ def add_predictors(decoder):
                 if wrapper == "idxmap":
                     src_path = _get_override_args("src_idxmap")
                     trg_path = _get_override_args("trg_idxmap")
-                    if isinstance(p, UnboundedVocabularyPredictor): 
-                        p = UnboundedIdxmapPredictor(src_path, trg_path, p, 1.0) 
+                    if isinstance(p, UnboundedVocabularyPredictor):
+                        p = UnboundedIdxmapPredictor(src_path, trg_path, p, 1.0)
                     else: # idxmap predictor for bounded predictors
                         p = IdxmapPredictor(src_path, trg_path, p, 1.0)
                 elif wrapper == "altsrc":
                     src_test = _get_override_args("altsrc_test")
-                    if isinstance(p, UnboundedVocabularyPredictor): 
+                    if isinstance(p, UnboundedVocabularyPredictor):
                         p = UnboundedAltsrcPredictor(src_test, p)
                     else: # altsrc predictor for bounded predictors
                         p = AltsrcPredictor(src_test, p)
@@ -345,9 +358,9 @@ def add_predictors(decoder):
                     p = Word2charPredictor(map_path, p)
                 elif wrapper == "skipvocab":
                     # skipvocab always wraps unbounded predictors
-                    p = SkipvocabPredictor(args.skipvocab_max_id, 
-                                           args.skipvocab_stop_size, 
-                                           args.beam, 
+                    p = SkipvocabPredictor(args.skipvocab_max_id,
+                                           args.skipvocab_stop_size,
+                                           args.beam,
                                            p)
                 elif wrapper == "fsttok":
                     fsttok_path = _get_override_args("fsttok_path")
@@ -366,7 +379,7 @@ def add_predictors(decoder):
                     decoder.remove_predictors()
                     return
             decoder.add_predictor(pred, p, pred_weight)
-            logging.info("Added predictor {} with weight {}".format(pred, 
+            logging.info("Added predictor {} with weight {}".format(pred,
                                                                     pred_weight))
     except IOError as e:
         logging.fatal("One of the files required for setting up the "
@@ -392,15 +405,15 @@ def add_predictors(decoder):
 
 
 def create_decoder(new_args):
-    """Creates the ``Decoder`` instance. This specifies the search 
+    """Creates the ``Decoder`` instance. This specifies the search
     strategy used to traverse the space spanned by the predictors. This
     method relies on the global ``args`` variable.
-    
+
     TODO: Refactor to avoid long argument lists
-    
+
     Args:
         new_args: Command line arguments
-    
+
     Returns:
         Decoder. Instance of the search strategy
     """
@@ -413,6 +426,8 @@ def create_decoder(new_args):
         decoder = BeamDecoder(args)
     elif args.decoder == "simbeam":
         decoder = SimBeamDecoder(args)
+    elif args.decoder == "simbeam_v2":
+        decoder = SimBeamDecoder_v2(args)
     elif args.decoder == "multisegbeam":
         decoder = MultisegBeamDecoder(args,
                                       args.hypo_recombination,
@@ -486,23 +501,23 @@ def create_decoder(new_args):
         logging.fatal("Decoder %s not available. Please double-check the "
                       "--decoder parameter." % args.decoder)
     add_predictors(decoder)
-    
+
     # Add heuristics for search strategies like A*
     if args.heuristics:
         add_heuristics(decoder)
-    
+
     # Update start sentence id if necessary
     if args.range:
-        idx,_ = args.range.split(":") if (":" in args.range) else (args.range,0)  
+        idx,_ = args.range.split(":") if (":" in args.range) else (args.range,0)
         decoder.set_start_sen_id(int(idx)-1) # -1 because indices start with 1
     return decoder
 
 
 def construct_nmt_vanilla_decoder():
-    """Creates the vanilla NMT decoder which bypasses the predictor 
+    """Creates the vanilla NMT decoder which bypasses the predictor
     framework. It uses the template methods ``get_nmt_vanilla_decoder``
     for uniform access to the blocks or tensorflow frameworks.
-    
+
     Returns:
         NMT vanilla decoder using all specified NMT models, or None if
         an error occurred.
@@ -519,7 +534,7 @@ def construct_nmt_vanilla_decoder():
     elif args.nmt_engine == 'tensorflow':
         get_default_nmt_config = tf_get_default_nmt_config
         get_nmt_vanilla_decoder = tf_get_nmt_vanilla_decoder
-    for _ in xrange(n): 
+    for _ in xrange(n):
         nmt_specs.append((_get_override_args("nmt_path"),
                           _parse_config_param("nmt_config",
                                               get_default_nmt_config())))
@@ -528,9 +543,9 @@ def construct_nmt_vanilla_decoder():
 
 def add_heuristics(decoder):
     """Adds all enabled heuristics to the ``decoder``. This is relevant
-    for heuristic based search strategies like A*. This method relies 
+    for heuristic based search strategies like A*. This method relies
     on the global ``args`` variable and reads out ``args.heuristics``.
-    
+
     Args:
         decoder (Decoder):  Decoding strategy, see ``create_decoder()``.
             This method will add heuristics to this instance with
@@ -561,13 +576,13 @@ def add_heuristics(decoder):
 
 
 def create_output_handlers():
-    """Creates the output handlers defined in the ``io`` module. 
+    """Creates the output handlers defined in the ``io`` module.
     These handlers create output files in different formats from the
     decoding results.
-    
+
     Args:
         args: Global command line arguments.
-    
+
     Returns:
         list. List of output handlers according --outputs
     """
@@ -609,11 +624,11 @@ def create_output_handlers():
 def _get_sentence_indices(range_param, src_sentences):
     """Helper method for ``do_decode`` which returns the indices of the
     sentence to decode
-    
+
     Args:
         range_param (string): ``--range`` parameter from config
         src_sentences (list):  A list of strings. The strings are the
-                               source sentences with word indices to 
+                               source sentences with word indices to
                                translate (e.g. '1 123 432 2')
     """
     if args.range:
@@ -646,19 +661,19 @@ def _get_delay_output_handler(output_handlers):
     return None
 
 
-def do_decode(decoder, 
-              output_handlers, 
+def do_decode(decoder,
+              output_handlers,
               src_sentences):
     """This method contains the main decoding loop. It iterates through
     ``src_sentences`` and applies ``decoder.decode()`` to each of them.
     At the end, it calls the output handlers to create output files.
-    
+
     Args:
         decoder (Decoder):  Current decoder instance
         output_handlers (list):  List of output handlers, see
                                  ``create_output_handlers()``
         src_sentences (list):  A list of strings. The strings are the
-                               source sentences with word indices to 
+                               source sentences with word indices to
                                translate (e.g. '1 123 432 2')
     """
     if not decoder.has_predictors():
@@ -685,13 +700,13 @@ def do_decode(decoder,
                     src_lst = []
                     for idx in xrange(len(src)):
                         logging.info("Next sentence, input %d (ID: %d): %s" % (
-                                                           idx, 
+                                                           idx,
                                                            sen_idx + 1,
                                                            ' '.join(src[idx])))
                         src_lst.append([int(x) for x in src[idx]])
                     src = src_lst
                 else:
-                    logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1, 
+                    logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1,
                                                                  ' '.join(src)))
                     src = [int(x) for x in src]
             start_hypo_time = time.time()
@@ -701,7 +716,7 @@ def do_decode(decoder,
                 hypos = [hypo for hypo in decoder.decode(src)
                             if hypo.total_score > args.min_score]
             else:
-                hypos = [hypo 
+                hypos = [hypo
                          for hypo in decoder.decode(utils.apply_src_wmap(src))
                             if hypo.total_score > args.min_score]
             if not hypos:
@@ -718,12 +733,12 @@ def do_decode(decoder,
                 continue
             if args.remove_eos:
                 for hypo in hypos:
-                    if (hypo.trgt_sentence 
+                    if (hypo.trgt_sentence
                             and hypo.trgt_sentence[-1] == utils.EOS_ID):
                         hypo.trgt_sentence = hypo.trgt_sentence[:-1]
             if args.nbest > 0:
                 hypos = hypos[:args.nbest]
-            if (args.combination_scheme != 'sum' 
+            if (args.combination_scheme != 'sum'
                     and not args.apply_combination_scheme_to_partial_hypos):
                 for hypo in hypos:
                     hypo.total_score = core.breakdown2score_full(
@@ -734,7 +749,7 @@ def do_decode(decoder,
                 hypos = [h.convert_to_char_level(utils.trg_cmap) for h in hypos]
             logging.info("Decoded (ID: %d): %s" % (
                     sen_idx+1,
-                    utils.apply_trg_wmap(hypos[0].trgt_sentence, 
+                    utils.apply_trg_wmap(hypos[0].trgt_sentence,
                                          {} if utils.trg_cmap else utils.trg_wmap)))
             if isinstance(hypos[0], SimHypothesis):
                 logging.info("Average delay: %f, Consecutive wait: %d " % (
@@ -757,7 +772,7 @@ def do_decode(decoder,
                             % (sys.exc_info()[0], e))
         except ValueError as e:
             logging.error("Number format error at sentence id %d: %s, "
-                          "Stack trace: %s" % (sen_idx+1, 
+                          "Stack trace: %s" % (sen_idx+1,
                                                e,
                                                traceback.format_exc()))
         except Exception as e:
@@ -777,4 +792,3 @@ def do_decode(decoder,
     except IOError as e:
         logging.error("I/O error %s occurred when creating output files: %s"
                       % (sys.exc_info()[0], e))
-
