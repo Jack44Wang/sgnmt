@@ -126,12 +126,11 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
                 0,
                 devices.data_parallelism(),
                 devices.ps_devices(all_workers=True))
-            sharded_logits, _ = model.model_fn(features,
-                                               last_position_only=True)
+            sharded_logits, _ = model.model_fn(features)
             self._log_probs = log_prob_from_logits(sharded_logits[0])
-            self._hidden_states = model.encode(features.get("inputs"),
-                                               features.get("target_space_id"),
-                                               model.hparams)
+            self._hidden_states = model.encoder_output
+            self._encoder_decoder_attention_bias = model.attention_bias
+            
             self.mon_sess = self.create_session()
 
     def _create_hparams(
@@ -212,12 +211,17 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
     def get_hidden_state(self):
         """Get the hidden state in the Transformer model.
         The hidden_states is going to be consumed by the RL agent.
+        Returned as np array
         """
         hidden_states = self.mon_sess.run(self._hidden_states,
             {self._inputs_var: self.src_sentence,
              self._targets_var: self.consumed + [text_encoder.PAD_ID]})
-        logging.info("hidden_states size %s." % tf.size(hidden_states))
-        return hidden_states
+        bias = self.mon_sess.run(self._encoder_decoder_attention_bias,
+            {self._inputs_var: self.src_sentence,
+             self._targets_var: self.consumed + [text_encoder.PAD_ID]})
+        logging.info("hidden_state size %s." % (hidden_states.shape,))
+        logging.info("attention_bias size %s." % (bias.shape,))
+        return hidden_states, bias
 
     def get_state(self):
         """The predictor state is the complete history."""

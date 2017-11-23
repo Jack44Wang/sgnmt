@@ -196,8 +196,8 @@ def add_predictors(decoder):
                                  single_cpu_thread=args.single_cpu_thread,
                                  max_terminal_id=args.syntax_max_terminal_id,
                                  pop_id=args.syntax_pop_id)
-            elif pred == "simt2t_v2":
-                p = SimT2TPredictor(_get_override_args("t2t_src_vocab_size"),
+            elif pred == "simt2tv2":
+                p = SimT2TPredictor_v2(_get_override_args("t2t_src_vocab_size"),
                                  _get_override_args("t2t_trg_vocab_size"),
                                  _get_override_args("t2t_model"),
                                  _get_override_args("t2t_problem"),
@@ -426,7 +426,7 @@ def create_decoder(new_args):
         decoder = BeamDecoder(args)
     elif args.decoder == "simbeam":
         decoder = SimBeamDecoder(args)
-    elif args.decoder == "simbeam_v2":
+    elif args.decoder == "simbeamv2":
         decoder = SimBeamDecoder_v2(args)
     elif args.decoder == "multisegbeam":
         decoder = MultisegBeamDecoder(args,

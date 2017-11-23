@@ -350,7 +350,7 @@ def get_parser():
                         choices=['greedy',
                                  'beam',
 								 'simbeam',
-                                 'simbeam_v2',
+                                 'simbeamv2',
                                  'multisegbeam',
                                  'syncbeam',
                                  'sepbeam',

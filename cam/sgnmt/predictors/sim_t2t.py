@@ -126,8 +126,7 @@ class SimT2TPredictor(_BaseTensor2TensorPredictor):
                 0,
                 devices.data_parallelism(),
                 devices.ps_devices(all_workers=True))
-            sharded_logits, _ = model.model_fn(features,
-                                               last_position_only=True)
+            sharded_logits, _ = model.model_fn(features)
             self._log_probs = log_prob_from_logits(sharded_logits[0])
             self.mon_sess = self.create_session()
 
