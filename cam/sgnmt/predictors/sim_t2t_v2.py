@@ -128,9 +128,10 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
                 devices.ps_devices(all_workers=True))
             sharded_logits, _ = model.model_fn(features)
             self._log_probs = log_prob_from_logits(sharded_logits[0])
-            self._hidden_states = model.encoder_output
+            self._encoder_output = model.encoder_output
             self._encoder_decoder_attention_bias = model.attention_bias
-            
+            self._decoder_output = model.decoder_output
+
             self.mon_sess = self.create_session()
 
     def _create_hparams(
@@ -213,15 +214,20 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
         The hidden_states is going to be consumed by the RL agent.
         Returned as np array
         """
-        hidden_states = self.mon_sess.run(self._hidden_states,
+        encoder_output = self.mon_sess.run(self._encoder_output,
             {self._inputs_var: self.src_sentence,
              self._targets_var: self.consumed + [text_encoder.PAD_ID]})
         bias = self.mon_sess.run(self._encoder_decoder_attention_bias,
             {self._inputs_var: self.src_sentence,
              self._targets_var: self.consumed + [text_encoder.PAD_ID]})
-        logging.info("hidden_state size %s." % (hidden_states.shape,))
+        decoder_output = self.mon_sess.run(self._decoder_output,
+            {self._inputs_var: self.src_sentence,
+             self._targets_var: self.consumed + [text_encoder.PAD_ID]})
+        logging.info("encoder_output size %s." % (encoder_output.shape,))
         logging.info("attention_bias size %s." % (bias.shape,))
-        return hidden_states, bias
+        logging.info(bias)
+        logging.info("decoder_output size %s." % (decoder_output.shape,))
+        return encoder_output, bias, decoder_output
 
     def get_state(self):
         """The predictor state is the complete history."""
