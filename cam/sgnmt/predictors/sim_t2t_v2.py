@@ -32,6 +32,7 @@ try:
     from tensor2tensor.utils import devices
     from tensor2tensor.data_generators import text_encoder
     import tensorflow as tf
+    import numpy as np
     from cam.sgnmt.predictors.tf_t2t import DummyTextEncoder
     """
     # Define flags from the t2t binaries
@@ -101,6 +102,8 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
         self.src_sentence = []
         self.pop_id = pop_id
         self.max_terminal_id = max_terminal_id
+        self.previous_encode = -1
+        self.previous_decode = -1
         predictor_graph = tf.Graph()
         with predictor_graph.as_default() as g:
             hparams = self._create_hparams(
@@ -192,7 +195,7 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
 
     def initialize(self, src_sentence):
         """Set src_sentence to a prefix, reset consumed.
-        If src_sentence is a complete sentence, call reveal(text_encoder.EOS_ID)
+        If src_sentence is a complete sentence, call reveal(text_encoder.EOS_ID)self.previous_encode = 
         """
         self.consumed = []
         self.src_sentence = src_sentence
@@ -223,10 +226,42 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
         decoder_output = self.mon_sess.run(self._decoder_output,
             {self._inputs_var: self.src_sentence,
              self._targets_var: self.consumed + [text_encoder.PAD_ID]})
+        if self.previous_encode > -1 and encoder_output.shape[1]-1 > self.previous_encode:
+            # new source word
+            logging.info("encoder_output difference %s." % 
+                np.sum(np.absolute(encoder_output[0,self.previous_encode]-\
+                self.pre_enc[0,self.previous_encode])))
+            logging.info("previous_Enc -1 %s." % self.pre_enc[0,-1,:4])
+            logging.info("new_Enc      -2 %s." % encoder_output[0,self.previous_encode,:4])
+            logging.info("new_Enc      -1 %s." % encoder_output[0,-1,:4])
+            if self.previous_decode > -1:
+                # check if the decoder output is changing with the source prefix
+                assert self.previous_decode == decoder_output.shape[1]-1
+                logging.info("decoder_output difference %s." % 
+                    np.sum(np.absolute(decoder_output[0,-1,0]-self.pre_dec[0,-1,0])))
+
+        if self.previous_decode > -1 and decoder_output.shape[1]-1 > self.previous_decode:
+            # new target word
+            logging.info("decoder_output difference %s." % 
+                np.sum(np.absolute(decoder_output[0,self.previous_decode,0]-\
+                self.pre_dec[0,self.previous_decode,0])))
+            logging.info("previous_Dec -1 %s." % self.pre_dec[0,-1,0,:4])
+            logging.info("new_Enc      -2 %s." % decoder_output[0,self.previous_decode,0,:4])
+            logging.info("new_Enc      -1 %s." % decoder_output[0,-1,0,:4])
+            if self.previous_encode > -1:
+                # check if the encoder output is changing with the target prefix
+                assert self.previous_encode == encoder_output.shape[1]-1
+                assert np.sum(np.absolute(encoder_output[0,-1]-self.pre_enc[0,-1])) < 1e-9
+                logging.info("encoder states unchanged.")
+
         logging.info("encoder_output size %s." % (encoder_output.shape,))
-        logging.info("attention_bias size %s." % (bias.shape,))
-        logging.info(bias)
-        logging.info("decoder_output size %s." % (decoder_output.shape,))
+        #logging.info("attention_bias size %s." % (bias.shape,))
+        #logging.info(bias)
+        logging.info("decoder_output size %s.\n" % (decoder_output.shape,))
+        self.previous_encode = encoder_output.shape[1]-1
+        self.pre_enc = encoder_output
+        self.previous_decode = decoder_output.shape[1]-1
+        self.pre_dec = decoder_output
         return encoder_output, bias, decoder_output
 
     def get_state(self):

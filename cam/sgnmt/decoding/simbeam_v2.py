@@ -70,7 +70,7 @@ class SimBeamDecoder_v2(Decoder):
             self.stop_criterion = self._all_eos
         self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
         # log(second best probable) / log(most probable)
-        self.entropy_bound = 5.0
+        self.entropy_bound = 4.0
 
     def _get_combined_score(self, hypo):
         """Combines hypo score with future cost estimates."""
@@ -255,6 +255,8 @@ class SimBeamDecoder_v2(Decoder):
                     hypos = self._filter_equal_hypos(next_hypos, next_scores)
                 else:
                     hypos = self._get_next_hypos(next_hypos, next_scores)
+                for (p, _) in self.predictors:
+                    p.get_hidden_state() # try to get the decoder hiddenstates
 
         logging.info("Processed source %d / %d" % (progress, len(src_sentence)))
         for hypo in hypos:
