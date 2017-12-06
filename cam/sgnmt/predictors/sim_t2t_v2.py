@@ -195,7 +195,7 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
 
     def initialize(self, src_sentence):
         """Set src_sentence to a prefix, reset consumed.
-        If src_sentence is a complete sentence, call reveal(text_encoder.EOS_ID)self.previous_encode = 
+        If src_sentence is a complete sentence, call reveal(text_encoder.EOS_ID)self.previous_encode =
         """
         self.consumed = []
         self.src_sentence = src_sentence
@@ -212,7 +212,17 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
         """
         self.src_sentence.append(word)
 
-    def get_hidden_state(self):
+    def get_last_decoder_state(self):
+        """Get the last encoder_decoder attention in the Transformer model.
+        The hidden states are going to be consumed by the RL agent.
+        Returned as np array [1, d_model]
+        """
+        decoder_output = self.mon_sess.run(self._decoder_output,
+            {self._inputs_var: self.src_sentence,
+             self._targets_var: self.consumed + [text_encoder.PAD_ID]})
+        return np.squeeze(decoder_output[0,-1,0,:])
+
+    def get_hidden_state_experiment(self):
         """Get the hidden state in the Transformer model.
         The hidden_states is going to be consumed by the RL agent.
         Returned as np array
@@ -228,7 +238,7 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
              self._targets_var: self.consumed + [text_encoder.PAD_ID]})
         if self.previous_encode > -1 and encoder_output.shape[1]-1 > self.previous_encode:
             # new source word
-            logging.info("encoder_output difference %s." % 
+            logging.info("encoder_output difference %s." %
                 np.sum(np.absolute(encoder_output[0,self.previous_encode]-\
                 self.pre_enc[0,self.previous_encode])))
             logging.info("previous_Enc -1 %s." % self.pre_enc[0,-1,:4])
@@ -237,12 +247,12 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
             if self.previous_decode > -1:
                 # check if the decoder output is changing with the source prefix
                 assert self.previous_decode == decoder_output.shape[1]-1
-                logging.info("decoder_output difference %s." % 
+                logging.info("decoder_output difference %s." %
                     np.sum(np.absolute(decoder_output[0,-1,0]-self.pre_dec[0,-1,0])))
 
         if self.previous_decode > -1 and decoder_output.shape[1]-1 > self.previous_decode:
             # new target word
-            logging.info("decoder_output difference %s." % 
+            logging.info("decoder_output difference %s." %
                 np.sum(np.absolute(decoder_output[0,self.previous_decode,0]-\
                 self.pre_dec[0,self.previous_decode,0])))
             logging.info("previous_Dec -1 %s." % self.pre_dec[0,-1,0,:4])

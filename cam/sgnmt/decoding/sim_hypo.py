@@ -64,15 +64,21 @@ class SimHypothesis(Hypothesis):
 class SimPartialHypothesis(PartialHypothesis):
     """Represents a partial hypothesis in simultaneous translation. """
 
-    def __init__(self, initial_states = None):
+    def __init__(self, initial_states = None, max_len = 50, lst_id = -1):
         """Creates a new partial hypothesis with zero score and empty
         translation prefix.
 
         Args:
             initial_states: Initial predictor states
+            max_len:        Maximum number of decoding iterations (R+W)
+            lst_id:         The index of sentence in ``model.all_src''
         """
         super(SimPartialHypothesis, self).__init__(initial_states)
         self.actions = ['r']
+        self.progress = 1;
+        self.netRead = 1 # number of R - number of W
+        self.max_len = max_len
+        self.lst_id = lst_id
 
     def generate_full_hypothesis(self):
         """Create a ``SimHypothesis`` instance from this hypothesis. """
@@ -86,19 +92,21 @@ class SimPartialHypothesis(PartialHypothesis):
     def expand(self, word, new_states, score, score_breakdown):
         """Call parent method ``expand()`` and append WRITE action
         """
-        hypo = SimPartialHypothesis(new_states)
+        hypo = SimPartialHypothesis(new_states, self.max_len, self.lst_id)
         hypo.score = self.score + score
         hypo.score_breakdown = copy.copy(self.score_breakdown)
         hypo.trgt_sentence = self.trgt_sentence + [word]
         hypo.add_score_breakdown(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
+        hypo.netRead -= 1
         return hypo
 
     def cheap_expand(self, word, score, score_breakdown):
         """Call parent method ``cheap_expand()`` and append WRITE action
         """
-        hypo = SimPartialHypothesis(self.predictor_states)
+        hypo = SimPartialHypothesis(self.predictor_states,
+                                    self.max_len, self.lst_id)
         hypo.score = self.score + score
         hypo.score_breakdown = copy.copy(self.score_breakdown)
         hypo.trgt_sentence = self.trgt_sentence + [word]
@@ -106,4 +114,5 @@ class SimPartialHypothesis(PartialHypothesis):
         hypo.add_score_breakdown(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
+        hypo.netRead -= 1
         return hypo

@@ -660,6 +660,60 @@ def _get_delay_output_handler(output_handlers):
             return output_handler
     return None
 
+def prepare_sim_decode(decoder, output_handlers, src_sentences):
+    """This method sets up the decoding procedure, and stops after reading the
+    first words. Args are the same as ``do_decode()''
+
+    Returns:
+        predictor: The predictor in the decoding process, so that hidden states
+                   can be extracted from it.
+    """
+    if not decoder.has_predictors():
+        logging.fatal("Decoding cancelled because of an error in the "
+                      "predictor configuration.")
+        return
+    all_hypos = []
+    src_wmap = []
+
+    for sen_idx in _get_sentence_indices(args.range, src_sentences):
+        try:
+            if src_sentences is False:
+                src = "0"
+                logging.info("Next sentence (ID: %d)" % (sen_idx+1))
+            else:
+                src = src_sentences[sen_idx]
+                if isinstance(src[0], list):
+                    src_lst = []
+                    for idx in xrange(len(src)):
+                        logging.info("Next sentence, input %d (ID: %d): %s" % (
+                            idx, sen_idx + 1, ' '.join(src[idx])))
+                        src_lst.append([int(x) for x in src[idx]])
+                    src = src_lst
+                else:
+                    logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1,
+                                                                 ' '.join(src)))
+                    src = [int(x) for x in src]
+            # get the set of initial hypotheses
+            if isinstance(src[0], list):
+                # Don't apply wordmap for multiple inputs
+                hypos = decoder.prepare_sim_decode(src)
+            else:
+                src_wmap.append(utils.apply_src_wmap(src)))
+                hypos = decoder.prepare_sim_decode(src_wmap[-1],
+                                                   len(src_wmap)-1 )
+
+            all_hypos.append(hypos)
+            #src_wmap.append(utils.apply_src_wmap(src)))
+
+        except ValueError as e:
+            logging.error("Number format error at sentence id %d: %s, "
+                "Stack trace: %s" % (sen_idx+1, e, traceback.format_exc()))
+        except Exception as e:
+            logging.error("An unexpected %s error has occurred at sentence id "
+                "%d: %s, Stack trace: %s" % (sys.exc_info()[0], sen_idx+1, e,
+                                                       traceback.format_exc()))
+
+    return all_hypos, src_wmap
 
 def do_decode(decoder,
               output_handlers,

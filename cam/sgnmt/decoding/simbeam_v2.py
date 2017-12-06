@@ -165,9 +165,10 @@ class SimBeamDecoder_v2(Decoder):
             self.best_scores = self.best_scores[:self.beam_size]
             self.min_score = self.best_scores[-1]
 
-    def _get_initial_hypos(self):
+    def _get_initial_hypos(self, max_len, lst_id):
         """Get the list of initial ``SimPartialHypothesis``. """
-        return [SimPartialHypothesis(self.get_predictor_states())]
+        return [SimPartialHypothesis(self.get_predictor_states(),
+                                     max_len, lst_id) ]
 
     def _reveal_source_word(self, word, hypos):
         """Reveal one source word to the predictor.
@@ -178,7 +179,7 @@ class SimBeamDecoder_v2(Decoder):
         """
         for (p, _) in self.predictors:
             p.reveal(word) # May change predictor
-            p.get_hidden_state() # try calling the get_hidden_state function
+            #p.get_hidden_state_experiment() # try calling the get_hidden_state function
 
         if hypos[0].get_last_word() != utils.EOS_ID:
             # EOS is the additional word
@@ -204,6 +205,42 @@ class SimBeamDecoder_v2(Decoder):
         self.set_predictor_states(predictor_state_save) # restore states
         return utils.entropy(list(posterior.values()))
 
+    def _write_step(self, hypos):
+        """Execute one step of WRITE action for all of the current hypotheses,
+        then update the hypotheses. Used in ``self.decode()''
+        """
+        for hypo in hypos:
+            hypo.netRead -= 1
+        next_hypos = []
+        next_scores = []
+        self.min_score = utils.NEG_INF
+        self.best_scores = []
+        for hypo in hypos:
+            if hypo.get_last_word() == utils.EOS_ID:
+                next_hypos.append(hypo)
+                next_scores.append(self._get_combined_score(hypo))
+                continue
+            for next_hypo in self._expand_hypo(hypo):
+                next_score = self._get_combined_score(next_hypo)
+                if next_score > self.min_score:
+                    next_hypos.append(next_hypo)
+                    next_scores.append(next_score)
+                    self._register_score(next_score)
+
+        if self.hypo_recombination:
+            hypos = self._filter_equal_hypos(next_hypos, next_scores)
+        else:
+            hypos = self._get_next_hypos(next_hypos, next_scores)
+
+    def prepare_sim_decode(self, src_sentence, lst_id):
+        """Initialises the hypothesis and the decoder itsef, stops after reading
+        the first words.
+        """
+        # use the first word to initialse hypothesis
+        self.initialize_predictors([src_sentence[0]])
+        hypos = self._get_initial_hypos(2.5*len(src_sentence), lst_id)
+        return hypos
+
     def decode(self, src_sentence):
         """Decodes a single source sentence using beam search.
         Give a source sentence, break it into prefix strings. If the predictor
@@ -211,54 +248,31 @@ class SimBeamDecoder_v2(Decoder):
         Otherwise, the decoder will reveal the next word to the predictor.
         """
         self.initialize_predictors([src_sentence[0]]) # use the first word only
-        progress = 1
-        hypos = self._get_initial_hypos()
+        hypos = self._get_initial_hypos(2.5*len(src_sentence), -1)
         self.max_len = 2.5*len(src_sentence)
         it = 0
-        read = 0
-        write = 0
         while self.stop_criterion(hypos):
             if it > self.max_len: # prevent infinite loops
                 logging.info("max iteration %d" % self.max_len)
                 break
             it = it + 1
 
-            if progress < len(src_sentence) and (write > read or \
+            if hypos[0].progress<len(src_sentence) and (hypos[0].netRead>0 or \
                 self._get_prediction_entropy(hypos[0]) > self.entropy_bound):
                 # not confident on prediction, or produced too many words,
                 # reveal the next word
-                self._reveal_source_word(src_sentence[progress], hypos)
-                progress += 1
-                read += 1
-                if progress == len(src_sentence): # reach the EOS
+                self._reveal_source_word(src_sentence[hypos[0].progress], hypos)
+                for hypo in hypos:
+                    hypo.progress += 1
+                    hypo.netRead += 1
+                if hypos[0].progress == len(src_sentence): # reach the EOS
                     self._reveal_source_word(text_encoder.EOS_ID, hypos)
             else:
                 # confident on prediction, expand hypos
-                write += 1
-                next_hypos = []
-                next_scores = []
-                self.min_score = utils.NEG_INF
-                self.best_scores = []
-                for hypo in hypos:
-                    if hypo.get_last_word() == utils.EOS_ID:
-                        next_hypos.append(hypo)
-                        next_scores.append(self._get_combined_score(hypo))
-                        continue
-                    for next_hypo in self._expand_hypo(hypo):
-                        next_score = self._get_combined_score(next_hypo)
-                        if next_score > self.min_score:
-                            next_hypos.append(next_hypo)
-                            next_scores.append(next_score)
-                            self._register_score(next_score)
+                self._write_step(hypos)
 
-                if self.hypo_recombination:
-                    hypos = self._filter_equal_hypos(next_hypos, next_scores)
-                else:
-                    hypos = self._get_next_hypos(next_hypos, next_scores)
-                for (p, _) in self.predictors:
-                    p.get_hidden_state() # try to get the decoder hiddenstates
-
-        logging.info("Processed source %d / %d" % (progress, len(src_sentence)))
+        logging.info("Processed source %d / %d" %
+                                        (hypos[0].progress, len(src_sentence)))
         for hypo in hypos:
             if hypo.get_last_word() == utils.EOS_ID:
                 self.add_full_hypo(hypo.generate_full_hypothesis())
