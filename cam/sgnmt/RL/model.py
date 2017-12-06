@@ -2,6 +2,7 @@ import codecs
 import logging
 import os
 import sys
+import copy
 
 import numpy as np
 
@@ -9,13 +10,18 @@ from cam.sgnmt import utils
 from cam.sgnmt import decode_utils
 from cam.sgnmt.ui import get_args, validate_args
 
+try:
+    # Requires tensor2tensor
+    from tensor2tensor.data_generators import text_encoder
+except ImportError:
+    pass 
+
 
 class Model(object):
     """Abstracts a Tensorflow graph for a learning task. """
 
-    def __init__(self):
-        self.d_model = 512
-        self.prepareSGNMT() # Initialise the SGNMT for hidden states extraction
+    def __init__(self, args):
+        self.prepareSGNMT(args) # Initialise the SGNMT for hidden states extraction
 
     def add_placeholders(self):
         """Adds placeholder variables to tensorflow computational graph. """
@@ -107,10 +113,10 @@ class Model(object):
     def build(self):
         self.add_placeholders()
         self.pred = self.add_prediction_op()
-        self.loss = self.add_loss_op(self.pred)
-        self.train_op = self.add_training_op(self.loss)
+        #self.loss = self.add_loss_op()
+        #self.train_op = self.add_training_op(self.loss)
 
-    def prepareSGNMT(self):
+    def prepareSGNMT(self, args):
         """Initialise the SGNMT for agent training.
         The SGNMT returns hiddens states only when the function
         ``_get_hidden_states()'' is being called.
@@ -122,22 +128,17 @@ class Model(object):
             sys.stdout = codecs.getwriter('UTF-8')(sys.stdout)
             sys.stdin = codecs.getreader('UTF-8')(sys.stdin)
 
-        # Load configuration from command line arguments or configuration file
-        args = get_args()
-        validate_args(args)
-        utils.switch_to_t2t_indexing()
-
         utils.load_src_wmap(args.src_wmap)
         utils.load_trg_wmap(args.trg_wmap)
         utils.load_trg_cmap(args.trg_cmap)
         self.decoder = decode_utils.create_decoder(args)
-        self.predictor = self.decoder.predictors[0] # only the sim_t2t predictor
+        self.predictor = self.decoder.predictors[0][0]# only sim_t2t predictor
         outputs = decode_utils.create_output_handlers()
 
         # set up SGNMT
         with codecs.open(args.src_test, encoding='utf-8') as f:
             self.all_hypos, self.all_src = decode_utils.prepare_sim_decode(
-                        decoder, outputs, [line.strip().split() for line in f])
+                    self.decoder, outputs, [line.strip().split() for line in f])
 
     def _update_hidden_states(self, actions):
         """Update the current hypotheses in the current batch ``self.cur_hypos''
@@ -149,7 +150,7 @@ class Model(object):
 
         """
         for sentence in range(len(self.cur_hypos)):
-            hypo = self.cur_hypos[sentence]
+            hypo = self.cur_hypos[sentence][0]
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
             if actions[sentence] < 0.5: # READ
@@ -173,9 +174,10 @@ class Model(object):
                       first dim might be small than batch_size, depends on the
                       size of ``self.cur_hypos''
         """
-        h_states = np.zeros(len(self.cur_hypos), self.Config.d_model)
+        h_states = np.zeros((len(self.cur_hypos), self.config.d_model), 
+                            dtype=np.float32)
         for sentence in range(h_states.shape[0]):
-            hypo = self.cur_hypos[sentence]
+            hypo = self.cur_hypos[sentence][0]
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
             h_states[sentence,:] = self.predictor.get_last_decoder_state()
@@ -183,7 +185,8 @@ class Model(object):
 
     def _get_bacth_cumulative_rewards(self, targets_batch, mask_batch):
         """ See ``_get_cumulative_rewards()'' """
-        cum_rewards = np.zeros(targets_batch.shape[0], self.Config.max_length)
+        cum_rewards = np.zeros((targets_batch.shape[0], self.config.max_length),
+                               dtype=np.float32)
         for i in range(targets_batch.shape[0]):
             cum_rewards[i,:] = self._get_cumulative_rewards(i,
                                                 targets_batch[i], mask_batch[i])
@@ -204,7 +207,7 @@ class Model(object):
             cum_reward:     Cumulative rewards for the current hypothesis,
                             numpy array of shape [1, max_length]
         """
-        cum_reward = np.zeros(1, self.Config.max_length)
+        cum_reward = np.ones((1, self.config.max_length), dtype=np.float32)
         # TODO calculate the cum_reward based on delay and quality
 
         return cum_reward

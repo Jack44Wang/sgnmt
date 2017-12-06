@@ -118,7 +118,7 @@ class linearModel(Model):
 
         return self.preds
 
-    def add_loss_op(self, probs_history, actions):
+    def add_loss_op(self, probs_history):
         """Adds Ops for the loss function to the computational graph.
         Use the mask to mask out nan produced when evaluating log(0)*0, since
         the last few elements of probs_holder will be 0's for each sentence.
@@ -128,16 +128,13 @@ class linearModel(Model):
         """
         zero = tf.constant(0, dtype=tf.float32)
         mask = tf.not_equal(self.reward_holder, zero)
-        correct_decisions = tf.greater(self.reward_holder, 0.5)
-        actions_ref = tf.gather(tf.stack([1 - actions, actions]), tf.cast(correct_decisions, tf.int32))
-        
         #logging.info(mask.shape)
-        raw_loss = tf.log(self.preds)*self.reward_holder
+        raw_loss = tf.log(probs_history)*self.reward_holder
         loss = -tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
         return loss
 
     def add_training_op(self, loss):
-        """Sets up the traadd_loss_opining Ops.
+        """Sets up the training Ops.
 
         Creates an optimizer and applies the gradients to all trainable variables.
         The Op returned by this function is what must be passed to the
@@ -174,12 +171,11 @@ class linearModel(Model):
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch, mask_batch)
 
         # get loss definition
-        self.loss = self.add_loss_op(probs_history, actions)
+        self.loss = self.add_loss_op(probs_history)
         self.train_op = self.add_training_op(self.loss)
 
         # train on batch, returns the loss to monitor
-        feed = {self.reward_holder:cum_rewards, self.input_placeholder: None}
-        print(feed)
+        feed = {self.reward_holder:cum_rewards}
         _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
         return loss
 

@@ -698,7 +698,7 @@ def prepare_sim_decode(decoder, output_handlers, src_sentences):
                 # Don't apply wordmap for multiple inputs
                 hypos = decoder.prepare_sim_decode(src)
             else:
-                src_wmap.append(utils.apply_src_wmap(src)))
+                src_wmap.append(utils.apply_src_wmap(src))
                 hypos = decoder.prepare_sim_decode(src_wmap[-1],
                                                    len(src_wmap)-1 )
 
