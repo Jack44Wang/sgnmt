@@ -5,6 +5,7 @@ import sys
 import copy
 
 import numpy as np
+import tensorflow as tf
 
 from cam.sgnmt import utils
 from cam.sgnmt import decode_utils
@@ -96,7 +97,7 @@ class Model(object):
         _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
         return loss
 
-    def predict_one_step(self, sess, inputs_batch, dropout=self.config.dropout):
+    def predict_one_step(self, sess, inputs_batch, dropout=None):
         """Make one step prediction on the batch given the hidden states.
 
         Returns:
@@ -105,6 +106,8 @@ class Model(object):
                      0 -> READ
                      1 -> WRITE
         """
+        if dropout is None:
+            dropout = self.config.dropout
         feed = self.create_feed_dict(inputs_batch, dropout=dropout)
         predictions = sess.run(self.pred, feed_dict=feed)
         probs = sess.run(tf.reduce_max(predictions, axis=1))
@@ -142,6 +145,18 @@ class Model(object):
             self.all_hypos, self.all_src = decode_utils.prepare_sim_decode(
                     self.decoder, outputs, [line.strip().split() for line in f])
 
+    def _check_actions(self, actions):
+        """Check if the actions are valid, if not, change the action."""
+        
+        for sentence in range(actions.shape[0]):
+            if actions[sentence] > 0.5 and self.cur_hypos[sentence][0].netRead < 1:
+                actions[sentence] = 0 # able to WRITE? (ie written < read)
+
+            if actions[sentence] < 0.5 and self.cur_hypos[sentence][0].progress \
+                        >= len(self.all_src[self.cur_hypos[sentence][0].lst_id]):
+                actions[sentence] = 1 # able to READ? (ie progress < length)
+        return actions
+
     def _update_hidden_states(self, actions):
         """Update the current hypotheses in the current batch ``self.cur_hypos''
         using actions, which will update the hiddens states.
@@ -159,6 +174,9 @@ class Model(object):
                                         copy.deepcopy(hypo.predictor_states) )
 
             if actions[sentence] < 0.5: # READ
+                #logging.info("List range: %d/%d" % (hypo.lst_id, len(self.all_src)))
+                #logging.info("Sentence length: %d/%d \n" % 
+                #                (hypo.progress, len(self.all_src[hypo.lst_id])))
                 self.decoder._reveal_source_word(
                             self.all_src[hypo.lst_id][hypo.progress], [hypo] )
                 hypo.progress += 1
@@ -190,10 +208,10 @@ class Model(object):
 
     def _get_bacth_cumulative_rewards(self, targets_batch, mask_batch):
         """ See ``_get_cumulative_rewards()'' """
-        cum_rewards = np.zeros((targets_batch.shape[0], self.config.max_length),
+        cum_rewards = np.zeros((self.config.max_length, targets_batch.shape[0]),
                                dtype=np.float32)
         for i in range(targets_batch.shape[0]):
-            cum_rewards[i,:] = self._get_cumulative_rewards(i,
+            cum_rewards[:,i] = self._get_cumulative_rewards(i,
                                                 targets_batch[i], mask_batch[i])
 
         return cum_rewards
@@ -212,7 +230,7 @@ class Model(object):
             cum_reward:     Cumulative rewards for the current hypothesis,
                             numpy array of shape [1, max_length]
         """
-        cum_reward = np.ones((1, self.config.max_length), dtype=np.float32)
+        cum_reward = np.ones((self.config.max_length), dtype=np.float32)
         # TODO calculate the cum_reward based on delay and quality
 
         return cum_reward

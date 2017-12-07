@@ -54,7 +54,7 @@ class linearModel(Model):
         self.actions_holder = tf.placeholder(tf.int32, [None])
         self.dropout_holder = tf.placeholder(tf.float32)
 
-    def create_feed_dict(self, inputs_batch, actions=None, dropout=1):
+    def create_feed_dict(self, inputs_batch, actions=None, rewards=None, dropout=1):
         """Creates the feed_dict for the linear RL agent.
 
         Args:
@@ -70,6 +70,7 @@ class linearModel(Model):
         }
         if actions is not None:
             feed_dict[self.actions_holder] = actions
+            feed_dict[self.reward_holder] = rewards
         return feed_dict
 
     def add_prediction_op(self):
@@ -126,20 +127,17 @@ class linearModel(Model):
         # correct_decisions = tf.greater(self.reward_holder, 0.5)
         # actions_ref = tf.gather(tf.stack([1 - actions, actions]),
         #                         tf.cast(correct_decisions, tf.int32))
-        chosen_actions = tf.gather(probs_history, self.actions_holder)
+        indices = tf.stack(
+            [tf.range(tf.shape(probs_history)[0]), self.actions_holder], 
+            axis=1 ) # which element to pick in 2D array
+        chosen_actions = tf.gather_nd(probs_history, indices)
         raw_loss = tf.log(chosen_actions)*self.reward_holder
         loss = -tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
         return loss
 
-    def _check_actions(self, actions):
-        """Check if the actions are valid, if not, change the action."""
-        # able to WRITE? (ie written < read)
-        for sentence in range(actions.shape[0]):
-            if actions[sentence] > 0.5 and self.cur_hypos[sentence].netRead < 1:
-                actions[sentence] = 0
-        return actions
 
-    def _populate_train_dict(self, targets_batch, mask_batch):
+
+    def _populate_train_dict(self, sess, targets_batch, mask_batch):
         """Prepares the feed dictionary for training.
         Args:
             targets_batch:  Target sentences in ids [batch_size, max_length]
@@ -150,8 +148,8 @@ class linearModel(Model):
         hidden_states = np.zeros(
             (self.config.max_length, len(self.cur_hypos), self.config.d_model),
             dtype=np.float32 )
-        actions = np.zeros((self.config.max_length, inputs_batch.shape[0]),
-                                  dtype=np.int32)
+        actions = np.zeros((self.config.max_length, len(self.cur_hypos)),
+                           dtype=np.int32)
         for step in range(self.config.max_length):
             hidden_states[step,:,:] = self._get_hidden_states()
             actions[step,:], _ = self.predict_one_step(sess,
@@ -160,9 +158,11 @@ class linearModel(Model):
 
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch, mask_batch)
 
+        #logging.info(actions.flatten())
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),
             actions.flatten(),
+            cum_rewards.flatten(),
             self.config.dropout )
 
         return train_dict
@@ -173,7 +173,7 @@ class linearModel(Model):
         compute the loss (actions will be exactly the same).
         """
         # train on batch, returns the loss to monitor
-        feed = self._populate_train_dict(targets_batch, mask_batch)
+        feed = self._populate_train_dict(sess, targets_batch, mask_batch)
         _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
         return loss
 
