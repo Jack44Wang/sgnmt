@@ -15,7 +15,7 @@ class Config:
     """
     d_model = 512
     max_length = 40 # longest BPE units in a sentence
-    dropout = 0.2
+    dropout = 0.8
     hidden_size = 64
     batch_size = 2 #32
     n_epochs = 10
@@ -44,42 +44,32 @@ class linearModel(Model):
     def add_placeholders(self):
         """Generates placeholder variables to represent the input tensors
 
-        input_placeholder:   Tensor of hidden states
-        targets_placeholder: Tensor of reference translation
-        target_mask_placeholder: Mask for targets
-        dropout_placeholder: Dropout value for regularisation
-        reward_holder:       Cumulative future rewards for each sentence
-        probs_holder:        Probabilities of chosen actions for each sentence
+        input_holder:   Tensor of hidden states
+        reward_holder:  Rewards for actions, flatten [max_length, batch_size]
+        actions_holder: Chosen actions, flatten [max_length, batch_size]
+        dropout_holder: Dropout value for regularisation
         """
-        self.input_placeholder = tf.placeholder(tf.float32, 
-                            [None, self.config.d_model])
-        self.targets_placeholder = tf.placeholder(tf.float32,
-                            [None, self.config.max_length, self.config.d_model])
-        self.target_mask_placeholder = tf.placeholder(tf.bool,
-                            [None, self.config.max_length])
-        self.dropout_placeholder = tf.placeholder(tf.float32)
-        self.reward_holder = tf.placeholder(tf.float32, 
-                            [None, self.config.max_length])
+        self.input_holder = tf.placeholder(tf.float32, [None, self.config.d_model])
+        self.reward_holder = tf.placeholder(tf.float32, [None])
+        self.actions_holder = tf.placeholder(tf.int32, [None])
+        self.dropout_holder = tf.placeholder(tf.float32)
 
-    def create_feed_dict(self, inputs_batch, mask_batch=None,
-                            targets_batch=None, dropout=1):
+    def create_feed_dict(self, inputs_batch, actions=None, dropout=1):
         """Creates the feed_dict for the linear RL agent.
 
         Args:
-            inputs_batch:  A batch of input data.
-            targets_batch: A batch of targets data.
-            mask_batch:    A batch of mask data to the targets.
-            dropout:       The dropout rate.
+            inputs_batch:   A batch of input data.
+            actions:        A batch of chosen actions [max_length*batch_size]
+            dropout:        The dropout rate.
         Returns:
             feed_dict: The feed dictionary mapping from placeholders to values.
         """
         feed_dict = {
-            self.input_placeholder: inputs_batch,   
-            self.dropout_placeholder: dropout
+            self.input_holder: inputs_batch,
+            self.dropout_holder: dropout
         }
-        if targets_batch is not None:
-            feed_dict[self.targets_placeholder] = targets_batch
-            feed_dict[self.target_mask_placeholder] = mask_batch
+        if actions is not None:
+            feed_dict[self.actions_holder] = actions
         return feed_dict
 
     def add_prediction_op(self):
@@ -99,7 +89,9 @@ class linearModel(Model):
         translation and the target translation placeholders.
 
         Returns:
-            pred: tf.Tensor of shape (batch_size, 2)
+            pred: Predicted probabilities of actions
+                  [batch_size*max_length, 2] --> training
+                  [batch_size, 2]            --> running
         """
 
         with tf.variable_scope("linear"):
@@ -112,93 +104,78 @@ class linearModel(Model):
             b2 = tf.get_variable('b2', [2],
                             tf.float32, tf.constant_initializer(0))
 
-            h = tf.nn.relu(tf.matmul(self.input_placeholder, W) + b1)
-            h_drop = tf.nn.dropout(h, self.dropout_placeholder)
+            h = tf.nn.relu(tf.matmul(self.input_holder, W) + b1)
+            h_drop = tf.nn.dropout(h, self.dropout_holder)
             self.preds = tf.nn.softmax(tf.matmul(h_drop, U) + b2)
 
         return self.preds
 
-    def add_loss_op(self, probs_history, actions):
+    def add_loss_op(self, probs_history):
         """Adds Ops for the loss function to the computational graph.
         Use the mask to mask out nan produced when evaluating log(0)*0, since
         the last few elements of probs_holder will be 0's for each sentence.
-        
+
+        Args:
+            probs_history: Predicted probabilities of actions in a batch at all
+                           time steps, shape [batch_size*max_length, 2]
         Returns:
             loss: A 0-d tensor (scalar)
         """
         zero = tf.constant(0, dtype=tf.float32)
         mask = tf.not_equal(self.reward_holder, zero)
-        correct_decisions = tf.greater(self.reward_holder, 0.5)
-        actions_ref = tf.gather(tf.stack([1 - actions, actions]), tf.cast(correct_decisions, tf.int32))
-        
-        #logging.info(mask.shape)
-        raw_loss = tf.log(self.preds)*self.reward_holder
+        # correct_decisions = tf.greater(self.reward_holder, 0.5)
+        # actions_ref = tf.gather(tf.stack([1 - actions, actions]),
+        #                         tf.cast(correct_decisions, tf.int32))
+        chosen_actions = tf.gather(probs_history, self.actions_holder)
+        raw_loss = tf.log(chosen_actions)*self.reward_holder
         loss = -tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
         return loss
 
-    def add_training_op(self, loss):
-        """Sets up the traadd_loss_opining Ops.
+    def _check_actions(self, actions):
+        """Check if the actions are valid, if not, change the action."""
+        # able to WRITE? (ie written < read)
+        for sentence in range(actions.shape[0]):
+            if actions[sentence] > 0.5 and self.cur_hypos[sentence].netRead < 1:
+                actions[sentence] = 0
+        return actions
 
-        Creates an optimizer and applies the gradients to all trainable variables.
-        The Op returned by this function is what must be passed to the
-        `sess.run()` call to cause the model to train.
-
+    def _populate_train_dict(self, targets_batch, mask_batch):
+        """Prepares the feed dictionary for training.
         Args:
-            loss: Loss tensor.
+            targets_batch:  Target sentences in ids [batch_size, max_length]
+            mask_batch:     Masks for target sentences [batch_size, max_length]
         Returns:
-            train_op: The Op for training.
+            train_dict:     Feed dictionary for training
         """
-        train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss)
-        return train_op
-
-    def predict_on_batch(self, sess, inputs_batch):
-        feed = self.create_feed_dict(inputs_batch)
-        predictions = sess.run(tf.argmax(self.pred, axis=2), feed_dict=feed)
-        return predictions
-
-    def train_on_batch(self, sess, inputs_batch, targets_batch, mask_batch):
-        """Use a for loop to update the 'input_placeholder' repeatedly,
-        record the actions chosen for each step. Use these to calculate the
-        cumulative rewards for the action taken at each timestep.
-        """
-        probs_history = np.zeros((inputs_batch.shape[0], self.config.max_length),
-                                  dtype=np.float32)
+        hidden_states = np.zeros(
+            (self.config.max_length, len(self.cur_hypos), self.config.d_model),
+            dtype=np.float32 )
+        actions = np.zeros((self.config.max_length, inputs_batch.shape[0]),
+                                  dtype=np.int32)
         for step in range(self.config.max_length):
-            # get the actions with probabilities and save them
-            actions, probs_history[:,step] = self.predict_one_step(sess,
-                                                                   inputs_batch)
-            self._update_hidden_states(actions)
-            inputs_batch = self._get_hidden_states()
+            hidden_states[step,:,:] = self._get_hidden_states()
+            actions[step,:], _ = self.predict_one_step(sess,
+                                                       hidden_states[step,:,:])
+            self._update_hidden_states(actions[step,:])
 
-        # get the cumulative rewards for the batch
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch, mask_batch)
 
-        # get loss definition
-        self.loss = self.add_loss_op(probs_history, actions)
-        self.train_op = self.add_training_op(self.loss)
+        train_dict = self.create_feed_dict(
+            np.reshape(hidden_states, (-1, self.config.d_model)),
+            actions.flatten(),
+            self.config.dropout )
 
+        return train_dict
+
+    def train_on_batch(self, sess, targets_batch, mask_batch):
+        """Specify the batch to train in ``self.cur_hypos''
+        Run the SGNMT to get decisions and rewards, then excute the RL agent to
+        compute the loss (actions will be exactly the same).
+        """
         # train on batch, returns the loss to monitor
-        feed = {self.reward_holder:cum_rewards, self.input_placeholder: None}
-        print(feed)
+        feed = self._populate_train_dict(targets_batch, mask_batch)
         _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
         return loss
-
-    def predict_one_step(self, sess, inputs_batch):
-        """Make the prediction of actions by selecting the most probable ones.
-
-        Returns:
-            probs:   Probabilities of chosen actions, [batch_size * 1]
-            actions: Chosen actions, [batch_size * 1]
-                     0 -> READ
-                     1 -> WRITE
-        """
-        feed = self.create_feed_dict(inputs_batch, dropout=self.config.dropout)
-        predictions = sess.run(self.pred, feed_dict=feed)
-        probs = sess.run(tf.reduce_max(predictions, axis=1))
-        actions = sess.run(tf.argmax(predictions, axis=1))
-        # TODO check if able to WRITE (ie written < read)
-
-        return actions, probs
 
     def __init__(self, config):
         super(linearModel, self).__init__(config.args)

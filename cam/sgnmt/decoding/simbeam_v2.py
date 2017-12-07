@@ -257,7 +257,7 @@ class SimBeamDecoder_v2(Decoder):
                 break
             it = it + 1
 
-            if hypos[0].progress<len(src_sentence) and (hypos[0].netRead>0 or \
+            if hypos[0].progress<len(src_sentence) and (hypos[0].netRead < 0 or\
                 self._get_prediction_entropy(hypos[0]) > self.entropy_bound):
                 # not confident on prediction, or produced too many words,
                 # reveal the next word

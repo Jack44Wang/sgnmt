@@ -68,5 +68,4 @@ if __name__ == "__main__":
         mask_batch = np.ma.make_mask(_mask_batch, shrink=False)
         with tf.Session() as session:
             session.run(init)
-            linModel.train_on_batch(session, linModel._get_hidden_states(),
-                                    targets_batch, mask_batch )
+            linModel.train_on_batch(session, targets_batch, mask_batch)

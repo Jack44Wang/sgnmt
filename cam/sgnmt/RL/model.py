@@ -14,7 +14,7 @@ try:
     # Requires tensor2tensor
     from tensor2tensor.data_generators import text_encoder
 except ImportError:
-    pass 
+    pass
 
 
 class Model(object):
@@ -68,19 +68,19 @@ class Model(object):
         raise NotImplementedError("Each Model must re-implement this method.")
 
     def add_training_op(self, loss):
-        """Sets up the training Ops.
+        """Sets up the traadd_loss_opining Ops.
 
         Creates an optimizer and applies the gradients to all trainable variables.
         The Op returned by this function is what must be passed to the
-        sess.run() to train the model.
+        `sess.run()` call to cause the model to train.
 
         Args:
-            loss: Loss tensor (a scalar).
+            loss: Loss tensor.
         Returns:
             train_op: The Op for training.
         """
-
-        raise NotImplementedError("Each Model must re-implement this method.")
+        train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss)
+        return train_op
 
     def train_on_batch(self, sess, inputs_batch, targets_batch):
         """Perform one step of gradient descent on the provided batch of data.
@@ -96,25 +96,27 @@ class Model(object):
         _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
         return loss
 
-    def predict_on_batch(self, sess, inputs_batch):
-        """Make predictions (cumulative future rewards for R/W) for the provided
-        batch of data
+    def predict_one_step(self, sess, inputs_batch, dropout=self.config.dropout):
+        """Make one step prediction on the batch given the hidden states.
 
-        Args:
-            sess: tf.Session()
-            input_batch: np.ndarray of shape (n_samples, d_model)
         Returns:
-            predictions: np.ndarray of shape (n_samples, 2)
+            probs:   Probabilities of chosen actions, [batch_size, 1]
+            actions: Chosen actions, [batch_size, 1]
+                     0 -> READ
+                     1 -> WRITE
         """
-        feed = self.create_feed_dict(inputs_batch)
+        feed = self.create_feed_dict(inputs_batch, dropout=dropout)
         predictions = sess.run(self.pred, feed_dict=feed)
-        return predictions
+        probs = sess.run(tf.reduce_max(predictions, axis=1))
+        actions = sess.run(tf.argmax(predictions, axis=1))
+
+        return self._check_actions(actions), probs
 
     def build(self):
         self.add_placeholders()
         self.pred = self.add_prediction_op()
-        #self.loss = self.add_loss_op()
-        #self.train_op = self.add_training_op(self.loss)
+        self.loss = self.add_loss_op(self.pred)
+        self.train_op = self.add_training_op(self.loss)
 
     def prepareSGNMT(self, args):
         """Initialise the SGNMT for agent training.
@@ -151,8 +153,11 @@ class Model(object):
         """
         for sentence in range(len(self.cur_hypos)):
             hypo = self.cur_hypos[sentence][0]
+            if not self.decoder.stop_criterion([hypo]):
+                continue # decoding finished            
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
+
             if actions[sentence] < 0.5: # READ
                 self.decoder._reveal_source_word(
                             self.all_src[hypo.lst_id][hypo.progress], [hypo] )
@@ -174,7 +179,7 @@ class Model(object):
                       first dim might be small than batch_size, depends on the
                       size of ``self.cur_hypos''
         """
-        h_states = np.zeros((len(self.cur_hypos), self.config.d_model), 
+        h_states = np.zeros((len(self.cur_hypos), self.config.d_model),
                             dtype=np.float32)
         for sentence in range(h_states.shape[0]):
             hypo = self.cur_hypos[sentence][0]
