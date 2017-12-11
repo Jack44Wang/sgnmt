@@ -37,6 +37,8 @@ def get_incremental_BLEU(hypothesis, reference, weights=(0.25, 0.25, 0.25, 0.25)
     """
     # Smoothen the modified precision.
     # Note: smooth_precision() converts values into float.
+    hypothesis = [str(x) for x in hypothesis]
+    reference = [str(x) for x in reference]
     if not smoothing_function:
         smoothing_function = SmoothingFunction().method2
 
@@ -44,7 +46,7 @@ def get_incremental_BLEU(hypothesis, reference, weights=(0.25, 0.25, 0.25, 0.25)
     seq_precisions = [[None for x in range(len(weights))] for y in range(len(hypothesis))]
 
     for n, _ in enumerate(weights, start=1):
-        for progress, frac in enumerate(modified_precision(references, hypothesis, n)):
+        for progress, frac in enumerate(get_precision_seq(reference, hypothesis, n)):
             seq_precisions[progress][n-1] = frac
 
     # Calculate corpus-level brevity penalty.
@@ -72,9 +74,10 @@ def get_incremental_BLEU(hypothesis, reference, weights=(0.25, 0.25, 0.25, 0.25)
         # return bp * math.exp(math.fsum(s))
         bleu[progress+1] = math.exp(math.fsum(s))
 
-    overall = bp * bleu[-1]
-    logging.info("BLEU score:")
+    overall = bp * bleu[-1]#.item()
+    logging.info("Incremental BLEU score:")
     logging.info(bleu)
+    logging.info("Overall BLEU score: %.4f" % overall)
     
     return np.diff(bleu), overall # without/with penalty
 

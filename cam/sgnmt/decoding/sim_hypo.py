@@ -30,7 +30,10 @@ class SimHypothesis(Hypothesis):
                                             total_score,
                                             score_breakdown)
         self.actions = actions
-        self.actions.pop() # remove the last 'w'
+        if self.actions[-1] == 'w' and trgt_sentence[-1] < 4: 
+            # reserved words, not in translation
+            self.actions.pop() # remove the last 'w'
+            self.trgt_sentence.pop()
 
     def get_average_delay(self):
         """Return the average delay based on the set of actions taken.
@@ -74,6 +77,7 @@ class SimHypothesis(Hypothesis):
         cum_delay = 0       # cumulative delays
 
         Rd = np.zeros(config.max_length)
+
         for i, action in enumerate(self.actions):
             if action == 'r':
                 current_consec += 1
@@ -81,18 +85,21 @@ class SimHypothesis(Hypothesis):
             else:
                 current_consec = 0
                 cum_delay += current_delay
-            dt = 1.0*cum_delay / (current_delay*(i - current_delay))
-            ap_penalty = dt - config.d_trg if dt > config.d_trg else 0
+            dt = 1.0*cum_delay / max(1, (current_delay*(i - current_delay)))
+            ap_penalty = max(0, dt - config.d_trg)
+            #logging.info("%d/%d" % (i, config.max_length))
             Rd[i] = config.alpha*consec_penalty + config.beta*ap_penalty
 
         logging.info("Delay rewards Rd:")
         logging.info(Rd)
+        logging.info("actions length: %d" % len(self.actions))
+        logging.info(self.actions)
         return Rd
 
 class SimPartialHypothesis(PartialHypothesis):
     """Represents a partial hypothesis in simultaneous translation. """
 
-    def __init__(self, initial_states = None, max_len = 50, lst_id = -1):
+    def __init__(self, initial_states = None, max_len = 60, lst_id = -1):
         """Creates a new partial hypothesis with zero score and empty
         translation prefix.
 
@@ -127,6 +134,7 @@ class SimPartialHypothesis(PartialHypothesis):
         hypo.add_score_breakdown(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
+        hypo.progress = self.progress
         hypo.netRead -= 1
         return hypo
 
@@ -142,5 +150,6 @@ class SimPartialHypothesis(PartialHypothesis):
         hypo.add_score_breakdown(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
+        hypo.progress = self.progress
         hypo.netRead -= 1
         return hypo

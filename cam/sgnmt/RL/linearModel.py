@@ -3,7 +3,7 @@ from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
-
+logging
 from model import Model
 
 class Config:
@@ -20,10 +20,10 @@ class Config:
     batch_size = 2 #32
     n_epochs = 10
     lr = 0.001
-    c_trg = 20      # target consecutive delay
+    c_trg = 5      # target consecutive delay
     d_trg = 0.8     # target average proportion
-    alpha = -0.3    # for consecutive delay
-    beta = -0.3     # for average proportion
+    alpha = -0.08    # for consecutive delay
+    beta = -1.0     # for average proportion
 
     def __init__(self, args):
         self.args = args
@@ -155,13 +155,20 @@ class linearModel(Model):
                            dtype=np.int32)
         for step in range(self.config.max_length):
             hidden_states[step,:,:] = self._get_hidden_states()
-            actions[step,:], _ = self.predict_one_step(sess,
+            actions[step,:], probs = self.predict_one_step(sess,
                                                        hidden_states[step,:,:])
+            #logging.info("step %d     actions:" % step)            
+            #logging.info(actions[step,:])
+            #logging.info("probs:")            
+            #logging.info(probs)
+            #logging.info("Actions length of 1st sentence %d" % len(self.cur_hypos[0][0].actions))
+            #logging.info("\n")
+ 
             self._update_hidden_states(actions[step,:])
 
         # Generate full hypotheses from partial hypotheses
-        for hypo in self.cur_hypos:
-            hypo = hypo[0].generate_full_hypothesis()
+        for idx, hypo in enumerate(self.cur_hypos):
+            self.cur_hypos[idx] = hypo[0].generate_full_hypothesis()
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch)
 
         #logging.info(actions.flatten())

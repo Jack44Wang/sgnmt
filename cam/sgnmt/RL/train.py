@@ -62,9 +62,14 @@ if __name__ == "__main__":
         linModel.cur_hypos = linModel.all_hypos[:linModel.config.batch_size]
         targets_batch = linModel.all_trg[:linModel.config.batch_size]
         init = tf.global_variables_initializer()
+        logging.info("Source 1 length %d" % len(linModel.all_src[0]))
+        logging.info("Source 2 length %d" % len(linModel.all_src[1]))
         
         with tf.Session() as session:
             session.run(init)
-            for i in range(10):
+            for i in range(config.n_epochs):
                 loss = linModel.train_on_batch(session, targets_batch)
                 logging.info("loss: %d" % loss)
+                linModel.prepareSGNMT(args) # reset hypos
+                linModel.cur_hypos = linModel.all_hypos[:linModel.config.batch_size]
+                targets_batch = linModel.all_trg[:linModel.config.batch_size]

@@ -109,11 +109,11 @@ class Model(object):
         if dropout is None:
             dropout = self.config.dropout
         feed = self.create_feed_dict(inputs_batch, dropout=dropout)
-        predictions = sess.run(self.pred, feed_dict=feed)
+        predictions = sess.run(self.pred, feed_dict=feed) 
         probs = sess.run(tf.reduce_max(predictions, axis=1))
         actions = sess.run(tf.argmax(predictions, axis=1))
 
-        return self._check_actions(actions), probs
+        return self._check_actions(actions, probs)
 
     def build(self):
         self.add_placeholders()
@@ -148,18 +148,26 @@ class Model(object):
         with codecs.open(args.trg_train, encoding='utf-8') as f:
             self.all_trg = decode_utils.prepare_trg_sentences(
                                         [line.strip().split() for line in f])
+        # TODO: add suffling to the data
 
-    def _check_actions(self, actions):
-        """Check if the actions are valid, if not, change the action."""
+    def _check_actions(self, actions, probs):
+        """Check if the actions are valid.
+        If not, change the action and update the probabilities.
+        """
 
         for sentence in range(actions.shape[0]):
+            new_action = actions[sentence]
             if actions[sentence] > 0.5 and self.cur_hypos[sentence][0].netRead < 1:
-                actions[sentence] = 0 # able to WRITE? (ie written < read)
+                new_action = 0 # able to WRITE? (ie written < read)
 
-            if actions[sentence] < 0.5 and self.cur_hypos[sentence][0].progress \
-                        >= len(self.all_src[self.cur_hypos[sentence][0].lst_id]):
-                actions[sentence] = 1 # able to READ? (ie progress < length)
-        return actions
+            if self.cur_hypos[sentence][0].progress >= \
+                    len(self.all_src[self.cur_hypos[sentence][0].lst_id]):
+                new_action = 1 # able to READ? (ie progress < length)
+
+            if not new_action == actions[sentence]:
+                actions[sentence] = new_action
+                probs[sentence] = 1.0 - probs[sentence]
+        return actions, probs
 
     def _update_hidden_states(self, actions):
         """Update the current hypotheses in the current batch ``self.cur_hypos''
@@ -173,24 +181,25 @@ class Model(object):
         for sentence in range(len(self.cur_hypos)):
             hypo = self.cur_hypos[sentence][0]
             if not self.decoder.stop_criterion([hypo]):
+                #logging.info("Decoding finished!!!")
                 continue # decoding finished
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
-
+            #logging.info("Actions length: %d" % len(hypo.actions))
             if actions[sentence] < 0.5: # READ
                 #logging.info("List range: %d/%d" % (hypo.lst_id, len(self.all_src)))
-                #logging.info("Sentence length: %d/%d \n" %
+                #logging.info("Sentence length: %d/%d" %
                 #                (hypo.progress, len(self.all_src[hypo.lst_id])))
+
                 self.decoder._reveal_source_word(
                             self.all_src[hypo.lst_id][hypo.progress], [hypo] )
                 hypo.progress += 1
                 hypo.netRead += 1
-                hypo.append_action()
                 if hypo.progress == len(self.all_src[hypo.lst_id]): # reach EOS
                     self.decoder._reveal_source_word(text_encoder.EOS_ID,
                                                      [hypo] )
             else: # WRITE
-                self.decoder._write_step([hypo])
+                self.cur_hypos[sentence][0] = self.decoder._write_step([hypo])[0]
 
 
     def _get_hidden_states(self):
@@ -211,7 +220,7 @@ class Model(object):
         return h_states
 
     def _get_bacth_cumulative_rewards(self, targets_batch):
-        """Calculate the Cumulative rewards for the hypotheses stored in
+        """Calculate the Cumulative rewards for the full hypotheses stored in
         ``self.cur_hypos'', where the rewards encode the delay and
         the quality.
 
@@ -221,17 +230,27 @@ class Model(object):
             cum_rewards:    Cumulative rewards for all current hypotheses,
                             numpy array of shape [max_length, batch_size]
         """
-        cum_rewards = np.zeros((self.config.max_length, targets_batch.shape[0]),
+        cum_rewards = np.zeros((self.config.max_length, len(targets_batch)),
                                dtype=np.float32)
-        for i in range(targets_batch.shape[0]):
+        for i in range(len(targets_batch)):
+            #logging.info("Type of hypo is %s" % type(self.cur_hypos[i]))
             cum_rewards[:,i] = self.cur_hypos[i].get_delay_rewards(self.config)
             # find indices of writes in the action list
             indices = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "w"]
-            # check the length of tranlstion hypothesis is the same as number of "w"
-            assert len(indices) == len(self.cur_hypos[i].trgt_sentence)
+            Rs = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "r"]
+            logging.info("number of R: %d" % len(Rs))
+            assert len(Rs) == len(self.all_src[i])
 
-            cum_reward[indices], _ += get_incremental_BLEU(
+            # check the length of tranlstion hypothesis is the same as number of "w"
+            #logging.info("len(indices) = %d" % len(indices))
+            #logging.info("len(self.cur_hypos[i].trgt_sentence) = %d" % 
+            #        len(self.cur_hypos[i].trgt_sentence))
+            logging.info(self.cur_hypos[i].trgt_sentence)
+            assert len(indices) <= len(self.cur_hypos[i].trgt_sentence)
+
+            incremental_BLEU, _ = get_incremental_BLEU(
                             self.cur_hypos[i].trgt_sentence, targets_batch[i])
+            cum_rewards[indices,i] += incremental_BLEU
 
         return cum_rewards
 
@@ -252,8 +271,9 @@ class Model(object):
         indices = [i for i, x in enumerate(self.cur_hypos[index].actions) if x == "w"]
         # check the length of tranlstion hypothesis is the same as number of "w"
         assert len(indices) == len(self.cur_hypos[index].trgt_sentence)
-
-        cum_reward[indices], _ += get_incremental_BLEU(
+        
+        incremental_BLEU, _ = get_incremental_BLEU(
                                 self.cur_hypos[index].trgt_sentence, target)
+        cum_reward[indices] += incremental_BLEU
 
         return cum_reward

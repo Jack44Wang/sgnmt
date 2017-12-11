@@ -248,6 +248,8 @@ class SimBeamDecoder_v2(Decoder):
         else:
             hypos = self._get_next_hypos(next_hypos, next_scores)
 
+        return hypos
+
     def prepare_sim_decode(self, src_sentence, lst_id):
         """Initialises the hypothesis and the decoder itsef, stops after reading
         the first words.
