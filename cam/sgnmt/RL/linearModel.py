@@ -14,12 +14,16 @@ class Config:
     instantiation.
     """
     d_model = 512
-    max_length = 40 # longest BPE units in a sentence
+    max_length = 60 # longest sequence of actions (R/W)
     dropout = 0.8
     hidden_size = 64
     batch_size = 2 #32
     n_epochs = 10
     lr = 0.001
+    c_trg = 20      # target consecutive delay
+    d_trg = 0.8     # target average proportion
+    alpha = -0.3    # for consecutive delay
+    beta = -0.3     # for average proportion
 
     def __init__(self, args):
         self.args = args
@@ -128,7 +132,7 @@ class linearModel(Model):
         # actions_ref = tf.gather(tf.stack([1 - actions, actions]),
         #                         tf.cast(correct_decisions, tf.int32))
         indices = tf.stack(
-            [tf.range(tf.shape(probs_history)[0]), self.actions_holder], 
+            [tf.range(tf.shape(probs_history)[0]), self.actions_holder],
             axis=1 ) # which element to pick in 2D array
         chosen_actions = tf.gather_nd(probs_history, indices)
         raw_loss = tf.log(chosen_actions)*self.reward_holder
@@ -137,11 +141,10 @@ class linearModel(Model):
 
 
 
-    def _populate_train_dict(self, sess, targets_batch, mask_batch):
+    def _populate_train_dict(self, sess, targets_batch):
         """Prepares the feed dictionary for training.
         Args:
             targets_batch:  Target sentences in ids [batch_size, max_length]
-            mask_batch:     Masks for target sentences [batch_size, max_length]
         Returns:
             train_dict:     Feed dictionary for training
         """
@@ -156,7 +159,10 @@ class linearModel(Model):
                                                        hidden_states[step,:,:])
             self._update_hidden_states(actions[step,:])
 
-        cum_rewards = self._get_bacth_cumulative_rewards(targets_batch, mask_batch)
+        # Generate full hypotheses from partial hypotheses
+        for hypo in self.cur_hypos:
+            hypo = hypo[0].generate_full_hypothesis()
+        cum_rewards = self._get_bacth_cumulative_rewards(targets_batch)
 
         #logging.info(actions.flatten())
         train_dict = self.create_feed_dict(
@@ -167,13 +173,13 @@ class linearModel(Model):
 
         return train_dict
 
-    def train_on_batch(self, sess, targets_batch, mask_batch):
+    def train_on_batch(self, sess, targets_batch):
         """Specify the batch to train in ``self.cur_hypos''
         Run the SGNMT to get decisions and rewards, then excute the RL agent to
         compute the loss (actions will be exactly the same).
         """
         # train on batch, returns the loss to monitor
-        feed = self._populate_train_dict(sess, targets_batch, mask_batch)
+        feed = self._populate_train_dict(sess, targets_batch)
         _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
         return loss
 

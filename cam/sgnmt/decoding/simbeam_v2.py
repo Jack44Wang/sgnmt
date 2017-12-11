@@ -205,6 +205,22 @@ class SimBeamDecoder_v2(Decoder):
         self.set_predictor_states(predictor_state_save) # restore states
         return utils.entropy(list(posterior.values()))
 
+    def _get_action_prediction(self, hypo):
+        """Return the probability of READ as the next action. """
+        # set the predictor state to the one in our best hypothesis
+        predictor_state_save = copy.deepcopy(self.get_predictor_states())
+        self.set_predictor_states(copy.deepcopy(hypo.predictor_states))
+        if not hypo.word_to_consume is None: # Consume if cheap expand
+            # did not modify hypo, so not setting word_to_consume to None
+            self.consume(hypo.word_to_consume)
+
+        action_probs = self.mon_sess.run(self.preds,
+            {self.input_holder: self.predictors[0].get_last_decoder_state(),
+             self.dropout_holder: 1.0} )
+
+        self.set_predictor_states(predictor_state_save) # restore states
+        return action_probs[0]
+
     def _write_step(self, hypos):
         """Execute one step of WRITE action for all of the current hypotheses,
         then update the hypotheses. Used in ``self.decode()''
@@ -258,7 +274,7 @@ class SimBeamDecoder_v2(Decoder):
             it = it + 1
 
             if hypos[0].progress<len(src_sentence) and (hypos[0].netRead < 0 or\
-                self._get_prediction_entropy(hypos[0]) > self.entropy_bound):
+                self._get_action_prediction(hypos[0]) > 0.5):
                 # not confident on prediction, or produced too many words,
                 # reveal the next word
                 self._reveal_source_word(src_sentence[hypos[0].progress], hypos)

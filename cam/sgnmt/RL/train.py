@@ -60,14 +60,11 @@ if __name__ == "__main__":
         logging.info("took %.2f seconds", time.time() - start)
 
         linModel.cur_hypos = linModel.all_hypos[:linModel.config.batch_size]
+        targets_batch = linModel.all_trg[:linModel.config.batch_size]
         init = tf.global_variables_initializer()
-
-        targets_batch = np.zeros((config.batch_size, config.max_length),
-                                 dtype=np.float32)
-        _mask_batch = np.ones((config.batch_size, config.max_length))
-        mask_batch = np.ma.make_mask(_mask_batch, shrink=False)
+        
         with tf.Session() as session:
             session.run(init)
             for i in range(10):
-                loss = linModel.train_on_batch(session, targets_batch, mask_batch)
+                loss = linModel.train_on_batch(session, targets_batch)
                 logging.info("loss: %d" % loss)

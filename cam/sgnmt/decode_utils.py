@@ -665,15 +665,15 @@ def prepare_sim_decode(decoder, output_handlers, src_sentences):
     first words. Args are the same as ``do_decode()''
 
     Returns:
-        predictor: The predictor in the decoding process, so that hidden states
-                   can be extracted from it.
+        all_hypos:  List of all initial hypotheses in the train/test set
+        all_src:    List of all source sentences(in ids) in the train/test set
     """
     if not decoder.has_predictors():
         logging.fatal("Decoding cancelled because of an error in the "
                       "predictor configuration.")
         return
     all_hypos = []
-    src_wmap = []
+    all_src = []
 
     for sen_idx in _get_sentence_indices(args.range, src_sentences):
         try:
@@ -690,20 +690,20 @@ def prepare_sim_decode(decoder, output_handlers, src_sentences):
                         src_lst.append([int(x) for x in src[idx]])
                     src = src_lst
                 else:
-                    logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1,
-                                                                 ' '.join(src)))
+                    # logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1,
+                    #                                              ' '.join(src)))
                     src = [int(x) for x in src]
             # get the set of initial hypotheses
             if isinstance(src[0], list):
                 # Don't apply wordmap for multiple inputs
                 hypos = decoder.prepare_sim_decode(src)
             else:
-                src_wmap.append(utils.apply_src_wmap(src))
-                hypos = decoder.prepare_sim_decode(src_wmap[-1],
-                                                   len(src_wmap)-1 )
+                all_src.append(utils.apply_src_wmap(src))
+                hypos = decoder.prepare_sim_decode(all_src[-1],
+                                                   len(all_src)-1 )
 
             all_hypos.append(hypos)
-            #src_wmap.append(utils.apply_src_wmap(src)))
+            #all_src.append(utils.apply_src_wmap(src)))
 
         except ValueError as e:
             logging.error("Number format error at sentence id %d: %s, "
@@ -713,7 +713,37 @@ def prepare_sim_decode(decoder, output_handlers, src_sentences):
                 "%d: %s, Stack trace: %s" % (sys.exc_info()[0], sen_idx+1, e,
                                                        traceback.format_exc()))
 
-    return all_hypos, src_wmap
+    return all_hypos, all_src
+
+def prepare_trg_sentences(trg_sentences):
+    """Load target sentences (already in ids)
+    Returns:
+        all_trg:    List of all target sentences(in ids) in the train/test set
+    """
+    all_trg = []
+
+    for sen_idx in _get_sentence_indices(args.range, trg_sentences):
+        try:
+            if trg_sentences is False:
+                trg = "0"
+                logging.info("Next sentence (ID: %d)" % (sen_idx+1))
+            else:
+                trg = trg_sentences[sen_idx]
+                # logging.info("Next sentence (ID: %d): %s" % (sen_idx + 1,
+                #                                              ' '.join(trg)))
+                trg = [int(x) for x in trg]
+
+            all_trg.append(trg) # file contains bpe ids, map is not necessary
+
+        except ValueError as e:
+            logging.error("Number format error at sentence id %d: %s, "
+                "Stack trace: %s" % (sen_idx+1, e, traceback.format_exc()))
+        except Exception as e:
+            logging.error("An unexpected %s error has occurred at sentence id "
+                "%d: %s, Stack trace: %s" % (sys.exc_info()[0], sen_idx+1, e,
+                                                       traceback.format_exc()))
+
+    return all_trg
 
 def do_decode(decoder,
               output_handlers,

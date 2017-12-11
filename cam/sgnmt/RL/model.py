@@ -7,9 +7,9 @@ import copy
 import numpy as np
 import tensorflow as tf
 
+from bleu import get_incremental_BLEU
 from cam.sgnmt import utils
 from cam.sgnmt import decode_utils
-from cam.sgnmt.ui import get_args, validate_args
 
 try:
     # Requires tensor2tensor
@@ -141,13 +141,17 @@ class Model(object):
         outputs = decode_utils.create_output_handlers()
 
         # set up SGNMT
-        with codecs.open(args.src_test, encoding='utf-8') as f:
+        with codecs.open(args.src_train, encoding='utf-8') as f:
             self.all_hypos, self.all_src = decode_utils.prepare_sim_decode(
                     self.decoder, outputs, [line.strip().split() for line in f])
 
+        with codecs.open(args.trg_train, encoding='utf-8') as f:
+            self.all_trg = decode_utils.prepare_trg_sentences(
+                                        [line.strip().split() for line in f])
+
     def _check_actions(self, actions):
         """Check if the actions are valid, if not, change the action."""
-        
+
         for sentence in range(actions.shape[0]):
             if actions[sentence] > 0.5 and self.cur_hypos[sentence][0].netRead < 1:
                 actions[sentence] = 0 # able to WRITE? (ie written < read)
@@ -169,13 +173,13 @@ class Model(object):
         for sentence in range(len(self.cur_hypos)):
             hypo = self.cur_hypos[sentence][0]
             if not self.decoder.stop_criterion([hypo]):
-                continue # decoding finished            
+                continue # decoding finished
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
 
             if actions[sentence] < 0.5: # READ
                 #logging.info("List range: %d/%d" % (hypo.lst_id, len(self.all_src)))
-                #logging.info("Sentence length: %d/%d \n" % 
+                #logging.info("Sentence length: %d/%d \n" %
                 #                (hypo.progress, len(self.all_src[hypo.lst_id])))
                 self.decoder._reveal_source_word(
                             self.all_src[hypo.lst_id][hypo.progress], [hypo] )
@@ -206,17 +210,32 @@ class Model(object):
             h_states[sentence,:] = self.predictor.get_last_decoder_state()
         return h_states
 
-    def _get_bacth_cumulative_rewards(self, targets_batch, mask_batch):
-        """ See ``_get_cumulative_rewards()'' """
+    def _get_bacth_cumulative_rewards(self, targets_batch):
+        """Calculate the Cumulative rewards for the hypotheses stored in
+        ``self.cur_hypos'', where the rewards encode the delay and
+        the quality.
+
+        Args:
+            targets_batch:  A batch of target data (correct translation).
+        Returns:
+            cum_rewards:    Cumulative rewards for all current hypotheses,
+                            numpy array of shape [max_length, batch_size]
+        """
         cum_rewards = np.zeros((self.config.max_length, targets_batch.shape[0]),
                                dtype=np.float32)
         for i in range(targets_batch.shape[0]):
-            cum_rewards[:,i] = self._get_cumulative_rewards(i,
-                                                targets_batch[i], mask_batch[i])
+            cum_rewards[:,i] = self.cur_hypos[i].get_delay_rewards(self.config)
+            # find indices of writes in the action list
+            indices = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "w"]
+            # check the length of tranlstion hypothesis is the same as number of "w"
+            assert len(indices) == len(self.cur_hypos[i].trgt_sentence)
+
+            cum_reward[indices], _ += get_incremental_BLEU(
+                            self.cur_hypos[i].trgt_sentence, targets_batch[i])
 
         return cum_rewards
 
-    def _get_cumulative_rewards(self, index, target, mask):
+    def _get_cumulative_rewards(self, index, target):
         """Calculate the Cumulative rewards for the hypothesis stored at
         ``self.cur_hypos[index]'', where the rewards encode the delay and
         the quality.
@@ -224,13 +243,17 @@ class Model(object):
         Args:
             index:      Index of the hypothesis.
             target:     A tensor of target data (correct translation).
-            mask:       A tensor of mask data to the target (encodes length).
-
         Returns:
             cum_reward:     Cumulative rewards for the current hypothesis,
                             numpy array of shape [1, max_length]
         """
-        cum_reward = np.ones((self.config.max_length), dtype=np.float32)
-        # TODO calculate the cum_reward based on delay and quality
+        cum_reward = self.cur_hypos[index].get_delay_rewards(self.config)
+        # find indices of writes in the action list
+        indices = [i for i, x in enumerate(self.cur_hypos[index].actions) if x == "w"]
+        # check the length of tranlstion hypothesis is the same as number of "w"
+        assert len(indices) == len(self.cur_hypos[index].trgt_sentence)
+
+        cum_reward[indices], _ += get_incremental_BLEU(
+                                self.cur_hypos[index].trgt_sentence, target)
 
         return cum_reward

@@ -4,6 +4,7 @@ simultaneous translation.
 
 import copy
 import logging
+import numpy as np
 from cam.sgnmt.decoding.core import Hypothesis, PartialHypothesis
 
 class SimHypothesis(Hypothesis):
@@ -60,6 +61,33 @@ class SimHypothesis(Hypothesis):
             else:
                 current_delay = 0
         return max_delay
+
+    def get_delay_rewards(self, config):
+        """Return the delay rewards (-ve) for each action taken.
+        Args:
+            config: Configuration object for rewards evaluation
+        Returns:
+            Rd:     List of delay rewards, size of max_length
+        """
+        current_consec = 0  # consecutive waits
+        current_delay = 0   # number of READs so far
+        cum_delay = 0       # cumulative delays
+
+        Rd = np.zeros(config.max_length)
+        for i, action in enumerate(self.actions):
+            if action == 'r':
+                current_consec += 1
+                consec_penalty = 2 if current_consec > config.c_trg else 0
+            else:
+                current_consec = 0
+                cum_delay += current_delay
+            dt = 1.0*cum_delay / (current_delay*(i - current_delay))
+            ap_penalty = dt - config.d_trg if dt > config.d_trg else 0
+            Rd[i] = config.alpha*consec_penalty + config.beta*ap_penalty
+
+        logging.info("Delay rewards Rd:")
+        logging.info(Rd)
+        return Rd
 
 class SimPartialHypothesis(PartialHypothesis):
     """Represents a partial hypothesis in simultaneous translation. """
