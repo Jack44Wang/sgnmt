@@ -99,6 +99,7 @@ class Model(object):
 
     def predict_one_step(self, sess, inputs_batch, dropout=None):
         """Make one step prediction on the batch given the hidden states.
+        With probability eps making a random decision
 
         Returns:
             probs:   Probabilities of chosen actions, [batch_size, 1]
@@ -112,6 +113,13 @@ class Model(object):
         predictions = sess.run(self.pred, feed_dict=feed) 
         probs = sess.run(tf.reduce_max(predictions, axis=1))
         actions = sess.run(tf.argmax(predictions, axis=1))
+        
+        # choose a random action with probability eps
+        # Note 50% random actions will be different from the original one
+        uniRan = np.random.uniform(size=actions.shape[0])
+        change_indices = np.where(uniRan < 0.5*self.config.eps)
+        probs[change_indices] = 1.0 - probs[change_indices]
+        actions[change_indices] = 1 - actions[change_indices]
 
         return self._check_actions(actions, probs)
 
@@ -148,7 +156,6 @@ class Model(object):
         with codecs.open(args.trg_train, encoding='utf-8') as f:
             self.all_trg = decode_utils.prepare_trg_sentences(
                                         [line.strip().split() for line in f])
-        # TODO: add suffling to the data
 
     def _check_actions(self, actions, probs):
         """Check if the actions are valid.
@@ -180,9 +187,10 @@ class Model(object):
         """
         for sentence in range(len(self.cur_hypos)):
             hypo = self.cur_hypos[sentence][0]
-            if not self.decoder.stop_criterion([hypo]):
+            if not self.decoder.stop_criterion([hypo]) \
+                                    or hypo.netRead < -0.25*hypo.progress:
                 #logging.info("Decoding finished!!!")
-                continue # decoding finished
+                continue # decoding finished or forced to stop (written too much)
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
             #logging.info("Actions length: %d" % len(hypo.actions))
@@ -238,14 +246,15 @@ class Model(object):
             # find indices of writes in the action list
             indices = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "w"]
             Rs = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "r"]
-            logging.info("number of R: %d" % len(Rs))
-            assert len(Rs) == len(self.all_src[i])
+            logging.info("R/length: %d/%d" % (len(Rs), len(self.all_src[self.cur_hypos[i].lst_id])))
+            logging.info("R/W: %d/%d" % (len(Rs), len(indices)))
+            assert len(Rs) <= len(self.all_src[self.cur_hypos[i].lst_id])
 
-            # check the length of tranlstion hypothesis is the same as number of "w"
+            # check the length of translation hypothesis is the same as number of "w"
             #logging.info("len(indices) = %d" % len(indices))
             #logging.info("len(self.cur_hypos[i].trgt_sentence) = %d" % 
             #        len(self.cur_hypos[i].trgt_sentence))
-            logging.info(self.cur_hypos[i].trgt_sentence)
+            #logging.info(self.cur_hypos[i].trgt_sentence)
             assert len(indices) <= len(self.cur_hypos[i].trgt_sentence)
 
             incremental_BLEU, _ = get_incremental_BLEU(
@@ -254,26 +263,3 @@ class Model(object):
 
         return cum_rewards
 
-    def _get_cumulative_rewards(self, index, target):
-        """Calculate the Cumulative rewards for the hypothesis stored at
-        ``self.cur_hypos[index]'', where the rewards encode the delay and
-        the quality.
-
-        Args:
-            index:      Index of the hypothesis.
-            target:     A tensor of target data (correct translation).
-        Returns:
-            cum_reward:     Cumulative rewards for the current hypothesis,
-                            numpy array of shape [1, max_length]
-        """
-        cum_reward = self.cur_hypos[index].get_delay_rewards(self.config)
-        # find indices of writes in the action list
-        indices = [i for i, x in enumerate(self.cur_hypos[index].actions) if x == "w"]
-        # check the length of tranlstion hypothesis is the same as number of "w"
-        assert len(indices) == len(self.cur_hypos[index].trgt_sentence)
-        
-        incremental_BLEU, _ = get_incremental_BLEU(
-                                self.cur_hypos[index].trgt_sentence, target)
-        cum_reward[indices] += incremental_BLEU
-
-        return cum_reward

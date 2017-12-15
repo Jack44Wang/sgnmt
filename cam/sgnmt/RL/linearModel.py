@@ -3,7 +3,6 @@ from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
-logging
 from model import Model
 
 class Config:
@@ -14,16 +13,18 @@ class Config:
     instantiation.
     """
     d_model = 512
-    max_length = 60 # longest sequence of actions (R/W)
+    max_length = 100 # longest sequence of actions (R/W)
     dropout = 0.8
     hidden_size = 64
-    batch_size = 2 #32
+    batch_size = 32 #32
     n_epochs = 10
     lr = 0.001
-    c_trg = 5      # target consecutive delay
+    eps = 1.0       # initial probability of choosing random action
+
+    c_trg = 8      # target consecutive delay
     d_trg = 0.8     # target average proportion
-    alpha = -0.08    # for consecutive delay
-    beta = -1.0     # for average proportion
+    alpha = -0.2    # for consecutive delay
+    beta = -0.1     # for average proportion
 
     def __init__(self, args):
         self.args = args
@@ -32,7 +33,7 @@ class Config:
             # Where to save things.
             self.output_path = args.model_path
         else:
-            self.output_path = "results/{:%Y%m%d_%H%M%S}/".format(datetime.now())
+            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 
@@ -153,7 +154,8 @@ class linearModel(Model):
             dtype=np.float32 )
         actions = np.zeros((self.config.max_length, len(self.cur_hypos)),
                            dtype=np.int32)
-        for step in range(self.config.max_length):
+        for step in range(self.config.max_length-1):# -1 since already have a READ
+            #prev_lengths = [len(x[0].actions) for x in self.cur_hypos]
             hidden_states[step,:,:] = self._get_hidden_states()
             actions[step,:], probs = self.predict_one_step(sess,
                                                        hidden_states[step,:,:])
@@ -163,15 +165,19 @@ class linearModel(Model):
             #logging.info(probs)
             #logging.info("Actions length of 1st sentence %d" % len(self.cur_hypos[0][0].actions))
             #logging.info("\n")
- 
             self._update_hidden_states(actions[step,:])
+            #new_lengths = [len(x[0].actions) for x in self.cur_hypos]
+            #logging.info("change in actions length:")
+            #logging.info(np.array(new_lengths)-np.array(prev_lengths))
+            #logging.info(np.array([x[0].netRead for x in self.cur_hypos]))
+            #logging.info("\n")
+
 
         # Generate full hypotheses from partial hypotheses
         for idx, hypo in enumerate(self.cur_hypos):
             self.cur_hypos[idx] = hypo[0].generate_full_hypothesis()
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch)
 
-        #logging.info(actions.flatten())
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),
             actions.flatten(),

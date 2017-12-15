@@ -17,34 +17,64 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
 logging.getLogger().setLevel(logging.DEBUG)
 
-def do_train(args):
-    config = Config(args)
-
+def do_train(args, shuffle=True):
+    """Main training function"""
     with tf.Graph().as_default():
         logging.info("Building model...",)
         start = time.time()
         linModel = linearModel(config)
         logging.info("took %.2f seconds", time.time() - start)
 
+        train_size = len(linModel.all_hypos)
+        indices = np.arange(train_size)
+        assert len(linModel.all_hypos) == len(linModel.all_trg)
+        
         init = tf.global_variables_initializer()
         saver = tf.train.Saver()
-
+        
         with tf.Session() as session:
             session.run(init)
+            for i in range(config.n_epochs):
+                if shuffle:
+                    np.random.shuffle(indices)
+                if i > 0:
+                    linModel.prepareSGNMT(args) # reset hypos
 
+                for batch_start in np.arange(0, train_size, config.batch_size):
+                    batch_indices = indices[batch_start: batch_start+config.batch_size]
+                    linModel.cur_hypos = [linModel.all_hypos[i] for i in batch_indices]
+                    targets_batch = [linModel.all_trg[i] for i in batch_indices]
+                    loss = linModel.train_on_batch(session, targets_batch)
+                    logging.info("progress: %d/%d" % (batch_start, train_size))
+                    logging.info("loss: %d\n" % loss)
 
-def do_evaluate(args):
-    config = Config(args)
+                linModel.config.eps = 0.5*linModel.config.eps # annealing
+                # save the model every epoch
+                saver.save(session, config.output_path + "RLmodel", global_step=i)
+
+def debug_train(args):
+    """Training script for debug only"""
     with tf.Graph().as_default():
         logging.info("Building model...",)
         start = time.time()
         linModel = linearModel(config)
         logging.info("took %.2f seconds", time.time() - start)
 
+        linModel.cur_hypos = linModel.all_hypos[5:5+linModel.config.batch_size]
+        targets_batch = linModel.all_trg[5:5+linModel.config.batch_size]
         init = tf.global_variables_initializer()
-
+        logging.info("Source 6 length %d" % len(linModel.all_src[5]))
+        logging.info("Source 7 length %d" % len(linModel.all_src[6]))
+        
         with tf.Session() as session:
             session.run(init)
+            for i in range(config.n_epochs):
+                loss = linModel.train_on_batch(session, targets_batch)
+                logging.info("loss: %d" % loss)
+                linModel.config.eps = 0.5*linModel.config.eps
+                linModel.prepareSGNMT(args) # reset hypos
+                linModel.cur_hypos = linModel.all_hypos[5:5+linModel.config.batch_size]
+                targets_batch = linModel.all_trg[5:5+linModel.config.batch_size]
 
 if __name__ == "__main__":
     # MAIN CODE STARTS HERE
@@ -53,23 +83,6 @@ if __name__ == "__main__":
     validate_args(args)
     utils.switch_to_t2t_indexing()
     config = Config(args)
-    with tf.Graph().as_default():
-        logging.info("Building model...",)
-        start = time.time()
-        linModel = linearModel(config)
-        logging.info("took %.2f seconds", time.time() - start)
 
-        linModel.cur_hypos = linModel.all_hypos[:linModel.config.batch_size]
-        targets_batch = linModel.all_trg[:linModel.config.batch_size]
-        init = tf.global_variables_initializer()
-        logging.info("Source 1 length %d" % len(linModel.all_src[0]))
-        logging.info("Source 2 length %d" % len(linModel.all_src[1]))
-        
-        with tf.Session() as session:
-            session.run(init)
-            for i in range(config.n_epochs):
-                loss = linModel.train_on_batch(session, targets_batch)
-                logging.info("loss: %d" % loss)
-                linModel.prepareSGNMT(args) # reset hypos
-                linModel.cur_hypos = linModel.all_hypos[:linModel.config.batch_size]
-                targets_batch = linModel.all_trg[:linModel.config.batch_size]
+    do_train(args)
+

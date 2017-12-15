@@ -14,7 +14,7 @@ class SimHypothesis(Hypothesis):
     """
 
     def __init__(self, trgt_sentence, total_score,
-                 score_breakdown = [], actions = []):
+                 score_breakdown = [], actions = [], lst_id = -1):
         """Creates a new full hypothesis for simultaneous translation
 
         Args:
@@ -30,6 +30,7 @@ class SimHypothesis(Hypothesis):
                                             total_score,
                                             score_breakdown)
         self.actions = actions
+        self.lst_id = lst_id
         if self.actions[-1] == 'w' and trgt_sentence[-1] < 4: 
             # reserved words, not in translation
             self.actions.pop() # remove the last 'w'
@@ -77,6 +78,8 @@ class SimHypothesis(Hypothesis):
         cum_delay = 0       # cumulative delays
 
         Rd = np.zeros(config.max_length)
+        #logging.info("actions length: %d" % len(self.actions))
+        #logging.info(self.actions)
 
         for i, action in enumerate(self.actions):
             if action == 'r':
@@ -90,10 +93,9 @@ class SimHypothesis(Hypothesis):
             #logging.info("%d/%d" % (i, config.max_length))
             Rd[i] = config.alpha*consec_penalty + config.beta*ap_penalty
 
-        logging.info("Delay rewards Rd:")
-        logging.info(Rd)
-        logging.info("actions length: %d" % len(self.actions))
-        logging.info(self.actions)
+        #logging.info("Delay rewards Rd:")
+        #logging.info(Rd)
+
         return Rd
 
 class SimPartialHypothesis(PartialHypothesis):
@@ -118,7 +120,7 @@ class SimPartialHypothesis(PartialHypothesis):
     def generate_full_hypothesis(self):
         """Create a ``SimHypothesis`` instance from this hypothesis. """
         return SimHypothesis(self.trgt_sentence, self.score,
-                             self.score_breakdown, self.actions)
+                         self.score_breakdown, self.actions, self.lst_id)
 
     def append_action(self, action = 'r'):
         """Append a new action to the list of actions. """
@@ -135,7 +137,7 @@ class SimPartialHypothesis(PartialHypothesis):
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
         hypo.progress = self.progress
-        hypo.netRead -= 1
+        hypo.netRead = self.netRead - 1
         return hypo
 
     def cheap_expand(self, word, score, score_breakdown):
@@ -151,5 +153,5 @@ class SimPartialHypothesis(PartialHypothesis):
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
         hypo.progress = self.progress
-        hypo.netRead -= 1
+        hypo.netRead = self.netRead - 1
         return hypo

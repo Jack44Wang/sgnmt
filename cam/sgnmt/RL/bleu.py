@@ -75,9 +75,9 @@ def get_incremental_BLEU(hypothesis, reference, weights=(0.25, 0.25, 0.25, 0.25)
         bleu[progress+1] = math.exp(math.fsum(s))
 
     overall = bp * bleu[-1]#.item()
-    logging.info("Incremental BLEU score:")
-    logging.info(bleu)
-    logging.info("Overall BLEU score: %.4f" % overall)
+    #logging.info("Incremental BLEU score:")
+    #logging.info(bleu)
+    #logging.info("Overall BLEU score: %.4f" % overall)
     
     return np.diff(bleu), overall # without/with penalty
 
