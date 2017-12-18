@@ -225,8 +225,6 @@ class SimBeamDecoder_v2(Decoder):
         """Execute one step of WRITE action for all of the current hypotheses,
         then update the hypotheses. Used in ``self.decode()''
         """
-        for hypo in hypos:
-            hypo.netRead -= 1
         next_hypos = []
         next_scores = []
         self.min_score = utils.NEG_INF

@@ -186,8 +186,7 @@ class Model(object):
             hypo = self.cur_hypos[sentence][0]
             if not self.decoder.stop_criterion([hypo]) \
                                     or hypo.netRead < -0.25*hypo.progress:
-                logging.info("Decoding finished!!!")
-                logging.info("%d/%f" % (hypo.netRead, -0.25*hypo.progress))
+                #logging.info("Decoding finished!!!")
                 continue # decoding finished or forced to stop (written too much)
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
