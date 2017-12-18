@@ -4,6 +4,7 @@ from datetime import datetime
 import tensorflow as tf
 import numpy as np
 from model import Model
+from bleu import corpus_bleu
 
 class Config:
     """Holds model hyperparams and data information.
@@ -16,7 +17,7 @@ class Config:
     max_length = 100 # longest sequence of actions (R/W)
     dropout = 0.8
     hidden_size = 64
-    batch_size = 2 #32
+    batch_size = 32 #32
     n_epochs = 10
     lr = 0.001
     eps = 1.0       # initial probability of choosing random action
@@ -37,7 +38,7 @@ class Config:
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 
-class linearModel(Model):
+class QModel(Model):
     """
     Implements a fully connected neural network with a single hidden layer.
 
@@ -50,22 +51,22 @@ class linearModel(Model):
         """Generates placeholder variables to represent the input tensors
 
         input_holder:   Tensor of hidden states
-        reward_holder:  Rewards for actions, flatten [max_length, batch_size]
+        target_holder:  Target Q values, flatten [max_length, batch_size]
         actions_holder: Chosen actions, flatten [max_length, batch_size]
         dropout_holder: Dropout value for regularisation
         """
         self.input_holder = tf.placeholder(tf.float32, [None, self.config.d_model])
-        self.reward_holder = tf.placeholder(tf.float32, [None])
+        self.target_holder = tf.placeholder(tf.float32, [None])
         self.actions_holder = tf.placeholder(tf.int32, [None])
         self.dropout_holder = tf.placeholder(tf.float32)
 
-    def create_feed_dict(self, inputs_batch, actions=None, rewards=None, dropout=1):
+    def create_feed_dict(self, inputs_batch, actions=None, targets=None, dropout=1):
         """Creates the feed_dict for the linear RL agent.
 
         Args:
             inputs_batch:   A batch of input data.
             actions:        A batch of chosen actions [max_length*batch_size]
-            rewards:        Rewards for chosen actions [max_length*batch_size]
+            targets:        Targets for qval predictions [max_length*batch_size]
             dropout:        The dropout rate.
         Returns:
             feed_dict: The feed dictionary mapping from placeholders to values.
@@ -76,7 +77,7 @@ class linearModel(Model):
         }
         if actions is not None:
             feed_dict[self.actions_holder] = actions
-            feed_dict[self.reward_holder] = rewards
+            feed_dict[self.target_holder] = targets
         return feed_dict
 
     def add_prediction_op(self):
@@ -89,14 +90,14 @@ class linearModel(Model):
         which will update the last hidden states x and hence the new predicted
         cumulative rewards.
 
-        The predicted probabilities for the chosen actions at each time step are
+        The predicted rewards for the chosen action at each time step are
         recorded.
 
         The true rewards at each time step are calculated based on the
         translation and the target translation placeholders.
 
         Returns:
-            pred: Predicted probabilities of actions
+            pred: Predicted qvals/rewards of actions
                   [batch_size*max_length, 2] --> training
                   [batch_size, 2]            --> running
         """
@@ -113,7 +114,7 @@ class linearModel(Model):
 
             h = tf.nn.relu(tf.matmul(self.input_holder, W) + b1)
             h_drop = tf.nn.dropout(h, self.dropout_holder)
-            self.preds = tf.nn.softmax(tf.matmul(h_drop, U) + b2)
+            self.preds = tf.matmul(h_drop, U) + b2
 
         return self.preds
 
@@ -129,16 +130,13 @@ class linearModel(Model):
             loss: A 0-d tensor (scalar)
         """
         zero = tf.constant(0, dtype=tf.float32)
-        mask = tf.not_equal(self.reward_holder, zero)
-        # correct_decisions = tf.greater(self.reward_holder, 0.5)
-        # actions_ref = tf.gather(tf.stack([1 - actions, actions]),
-        #                         tf.cast(correct_decisions, tf.int32))
+        mask = tf.not_equal(self.target_holder, zero)
         indices = tf.stack(
             [tf.range(tf.shape(probs_history)[0]), self.actions_holder],
             axis=1 ) # which element to pick in 2D array
         chosen_actions = tf.gather_nd(probs_history, indices)
-        raw_loss = tf.log(chosen_actions)*self.reward_holder
-        loss = -tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
+        raw_loss = tf.square(self.target_holder - chosen_actions)
+        loss = tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
         return loss
 
 
@@ -155,34 +153,38 @@ class linearModel(Model):
             dtype=np.float32 )
         actions = np.zeros((self.config.max_length, len(self.cur_hypos)),
                            dtype=np.int32)
+        targets = np.zeros((self.config.max_length, len(self.cur_hypos)),
+                           dtype=np.int32)
         for step in range(self.config.max_length-1):# -1 since already have a READ
             #prev_lengths = [len(x[0].actions) for x in self.cur_hypos]
             hidden_states[step,:,:] = self._get_hidden_states()
-            actions[step,:], probs = self.predict_one_step(sess,
+            # current qval is the target for the previous step
+            actions[step,:], targets[step-1,:] = self.predict_one_step(sess,
                                                        hidden_states[step,:,:])
-            #logging.info("step %d     actions:" % step)
-            #logging.info(actions[step,:])
-            #logging.info("probs:")
-            #logging.info(probs)
-            #logging.info("Actions length of 1st sentence %d" % len(self.cur_hypos[0][0].actions))
-            #logging.info("\n")
             self._update_hidden_states(actions[step,:])
-            #new_lengths = [len(x[0].actions) for x in self.cur_hypos]
-            #logging.info("change in actions length:")
-            #logging.info(np.array(new_lengths)-np.array(prev_lengths))
-            #logging.info(np.array([x[0].netRead for x in self.cur_hypos]))
-            #logging.info("\n")
 
-
+        BLEU_hypos = []
+        BLEU_refs = []
         # Generate full hypotheses from partial hypotheses
         for idx, hypo in enumerate(self.cur_hypos):
             self.cur_hypos[idx] = hypo[0].generate_full_hypothesis()
-        cum_rewards = self._get_bacth_cumulative_rewards(targets_batch)
+            action_length = len(self.cur_hypos[idx].actions)
+            # get hypothesis and reference for BLEU evaluation
+            BLEU_hypos.append([str(x) for x in self.cur_hypos[idx].trgt_sentence])
+            BLEU_refs.append([[str(x) for x in targets_batch[idx]]])
+            # targets are just as long as the action sequence, pad the remaining
+            # targets with 0
+            targets[action_length-1:,idx] = 0
+
+        # give the quality rewards (BLEU) at the end
+        BLEU = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
+        for idx in range(len(self.cur_hypos)):
+            targets[len(self.cur_hypos[idx].actions)-1,idx] = BLEU
 
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),
             actions.flatten(),
-            cum_rewards.flatten(),
+            targets.flatten(),
             self.config.dropout )
 
         return train_dict
@@ -198,6 +200,6 @@ class linearModel(Model):
         return loss
 
     def __init__(self, config):
-        super(linearModel, self).__init__(config.args)
+        super(QModel, self).__init__(config.args)
         self.config = config
         self.build()

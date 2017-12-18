@@ -102,7 +102,7 @@ class Model(object):
         With probability eps making a random decision
 
         Returns:
-            probs:   Probabilities of chosen actions, [batch_size, 1]
+            qvals:   probs/rewards of chosen actions, [batch_size, 1]
             actions: Chosen actions, [batch_size, 1]
                      0 -> READ
                      1 -> WRITE
@@ -110,18 +110,19 @@ class Model(object):
         if dropout is None:
             dropout = self.config.dropout
         feed = self.create_feed_dict(inputs_batch, dropout=dropout)
-        predictions = sess.run(self.pred, feed_dict=feed) 
-        probs = sess.run(tf.reduce_max(predictions, axis=1))
+        predictions = sess.run(self.pred, feed_dict=feed)
         actions = sess.run(tf.argmax(predictions, axis=1))
-        
+
         # choose a random action with probability eps
         # Note 50% random actions will be different from the original one
         uniRan = np.random.uniform(size=actions.shape[0])
         change_indices = np.where(uniRan < 0.5*self.config.eps)
-        probs[change_indices] = 1.0 - probs[change_indices]
         actions[change_indices] = 1 - actions[change_indices]
+        actions = self._check_actions(actions) # validate choices
+        # get the Q values/probabilities correspond to the selected actions
+        qvals = np.choose(actions, predictions.T)
 
-        return self._check_actions(actions, probs)
+        return actions, qvals
 
     def build(self):
         self.add_placeholders()
@@ -157,24 +158,20 @@ class Model(object):
             self.all_trg = decode_utils.prepare_trg_sentences(
                                         [line.strip().split() for line in f])
 
-    def _check_actions(self, actions, probs):
+    def _check_actions(self, actions):
         """Check if the actions are valid.
         If not, change the action and update the probabilities.
         """
 
         for sentence in range(actions.shape[0]):
-            new_action = actions[sentence]
             if actions[sentence] > 0.5 and self.cur_hypos[sentence][0].netRead < 1:
-                new_action = 0 # able to WRITE? (ie written < read)
+                actions[sentence] = 0 # able to WRITE? (ie written < read)
 
             if self.cur_hypos[sentence][0].progress >= \
                     len(self.all_src[self.cur_hypos[sentence][0].lst_id]):
-                new_action = 1 # able to READ? (ie progress < length)
+                actions[sentence] = 1 # able to READ? (ie progress < length)
 
-            if not new_action == actions[sentence]:
-                actions[sentence] = new_action
-                probs[sentence] = 1.0 - probs[sentence]
-        return actions, probs
+        return actions
 
     def _update_hidden_states(self, actions):
         """Update the current hypotheses in the current batch ``self.cur_hypos''
@@ -189,7 +186,8 @@ class Model(object):
             hypo = self.cur_hypos[sentence][0]
             if not self.decoder.stop_criterion([hypo]) \
                                     or hypo.netRead < -0.25*hypo.progress:
-                #logging.info("Decoding finished!!!")
+                logging.info("Decoding finished!!!")
+                logging.info("%d/%f" % (hypo.netRead, -0.25*hypo.progress))
                 continue # decoding finished or forced to stop (written too much)
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
@@ -252,7 +250,7 @@ class Model(object):
 
             # check the length of translation hypothesis is the same as number of "w"
             #logging.info("len(indices) = %d" % len(indices))
-            #logging.info("len(self.cur_hypos[i].trgt_sentence) = %d" % 
+            #logging.info("len(self.cur_hypos[i].trgt_sentence) = %d" %
             #        len(self.cur_hypos[i].trgt_sentence))
             #logging.info(self.cur_hypos[i].trgt_sentence)
             assert len(indices) <= len(self.cur_hypos[i].trgt_sentence)
@@ -262,4 +260,3 @@ class Model(object):
             cum_rewards[indices,i] += incremental_BLEU
 
         return cum_rewards
-

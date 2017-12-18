@@ -30,7 +30,7 @@ def get_incremental_BLEU(hypothesis, reference, weights=(0.25, 0.25, 0.25, 0.25)
     """Calculates the incremental BLEUs at each step for quality judgement
 
     Args:
-        hypothesis:   Generated translation to be checked, list(int)
+        hypothesis: Generated translation to be checked, list(int)
         refrence:   Ground truth translation, list(int)
     Returns:
         BLEU:       Incremental BLEUs at each step, same size as ``hypothesis''
@@ -78,7 +78,7 @@ def get_incremental_BLEU(hypothesis, reference, weights=(0.25, 0.25, 0.25, 0.25)
     #logging.info("Incremental BLEU score:")
     #logging.info(bleu)
     #logging.info("Overall BLEU score: %.4f" % overall)
-    
+
     return np.diff(bleu), overall # without/with penalty
 
 def get_precision_seq(reference, hypothesis, n):
