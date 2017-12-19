@@ -4,9 +4,15 @@ import copy
 import logging
 
 from cam.sgnmt import utils
+from cam.sgnmt.RL.model import Model
+from cam.sgnmt.RL.linearModel import Config
 from cam.sgnmt.decoding.core import Decoder
 from cam.sgnmt.decoding.sim_hypo import SimPartialHypothesis
+
 import numpy as np
+import tensorflow as tf
+from tensorflow.python.training import saver
+from tensorflow.python.training import training
 
 try:
     # Requires tensor2tensor
@@ -69,8 +75,25 @@ class SimBeamDecoder_v2(Decoder):
         else:
             self.stop_criterion = self._all_eos
         self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
-        # log(second best probable) / log(most probable)
         self.entropy_bound = 4.0
+
+        self.config = Config(None) # just to get path
+        RL_graph = tf.Graph()
+        with RL_graph.as_default() as g:
+            # restore placeholder and result tensors
+            self._input_holder = g.get_tensor_by_name("input_holder:0")
+            self._dropout_holder = g.get_tensor_by_name("dropout_holder:0")
+            self._prediction_op = g.get_tensor_by_name("linear/predictions:0")
+
+            self.mon_sess = self._create_session()
+
+    
+    def _create_session(self):
+        """Creates a MonitoredSession for restoring model"""
+        checkpoint_path = saver.latest_checkpoint(self.config.output_path)
+        return training.MonitoredSession(
+            session_creator=training.ChiefSessionCreator(
+                checkpoint_filename_with_path=checkpoint_path))
 
     def _get_combined_score(self, hypo):
         """Combines hypo score with future cost estimates."""
@@ -94,7 +117,7 @@ class SimBeamDecoder_v2(Decoder):
         """Get the best beam size expansions of ``hypo``.
 
         Args:
-            hypo (SimPartialHypothesis): Hypothesis to expans
+            hypo (SimPartialHypothesis): Hypothesis to expand
 
         Returns:
             list. List of child hypotheses
@@ -214,9 +237,9 @@ class SimBeamDecoder_v2(Decoder):
             # did not modify hypo, so not setting word_to_consume to None
             self.consume(hypo.word_to_consume)
 
-        action_probs = self.mon_sess.run(self.preds,
-            {self.input_holder: self.predictors[0].get_last_decoder_state(),
-             self.dropout_holder: 1.0} )
+        action_probs = self.mon_sess.run(self._prediction_op,
+            {self._input_holder: self.predictors[0].get_last_decoder_state(),
+             self._dropout_holder: 1.0} )
 
         self.set_predictor_states(predictor_state_save) # restore states
         return action_probs[0]

@@ -6,6 +6,7 @@ from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
+from tensorflow.python.training import training
 
 from linearModel import Config
 from linearModel import linearModel
@@ -52,6 +53,41 @@ def do_train(args, shuffle=True):
                 # save the model every epoch
                 saver.save(session, config.output_path + "RLmodel", global_step=i)
 
+def do_train_small(args, shuffle=True):
+    """Main training function"""
+    with tf.Graph().as_default():
+        logging.info("Building model...",)
+        start = time.time()
+        linModel = linearModel(config)
+        logging.info("took %.2f seconds", time.time() - start)
+
+        train_size = len(linModel.all_hypos)
+        indices = np.arange(train_size)
+        assert len(linModel.all_hypos) == len(linModel.all_trg)
+        
+        init = tf.global_variables_initializer()
+        saver = tf.train.Saver()
+        
+        #with linModel.create_session() as session:
+        with create_training_session(config) as session:
+            #session.run(init)
+            if shuffle:
+                np.random.shuffle(indices)
+
+            for nb in range(config.n_batches):
+                batch_start = nb*config.batch_size
+                batch_indices = indices[batch_start: batch_start+config.batch_size]
+                linModel.cur_hypos = [linModel.all_hypos[i] for i in batch_indices]
+                targets_batch = [linModel.all_trg[i] for i in batch_indices]
+                loss = linModel.train_on_batch(session, targets_batch)
+                logging.info("progress: %d/%d" % (batch_start, train_size))
+                logging.info("loss: %d\n" % loss)
+                # monitored training session handles the checkpoint saving
+                if nb % 6 == 0 and nb != 0:
+                    linModel.config.eps = max(config.min_eps, 0.9*linModel.config.eps)
+                    #saver.save(session, config.output_path + "RLmodel", global_step=i)
+
+
 def debug_train(args):
     """Training script for debug only"""
     with tf.Graph().as_default():
@@ -76,6 +112,13 @@ def debug_train(args):
                 linModel.cur_hypos = linModel.all_hypos[5:5+linModel.config.batch_size]
                 targets_batch = linModel.all_trg[5:5+linModel.config.batch_size]
 
+
+def create_training_session(config):
+    """Creates a MonitoredTrainingSession for training"""
+    return training.MonitoredTrainingSession(
+            checkpoint_dir=config.output_path,
+            save_checkpoint_secs=1200)
+
 if __name__ == "__main__":
     # MAIN CODE STARTS HERE
     # Load configuration from command line arguments or configuration file
@@ -84,5 +127,5 @@ if __name__ == "__main__":
     utils.switch_to_t2t_indexing()
     config = Config(args)
 
-    do_train(args)
+    do_train_small(args)
 

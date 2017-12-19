@@ -186,6 +186,8 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
 
     def predict_next(self):
         """Call the T2T model in self.mon_sess."""
+        #logging.info("src_sentence length: %d" % len(self.src_sentence))
+        #logging.info("consumed length: %d" % len(self.consumed))
         log_probs = self.mon_sess.run(self._log_probs,
             {self._inputs_var: self.src_sentence,
              self._targets_var: self.consumed + [text_encoder.PAD_ID]})
@@ -195,7 +197,7 @@ class SimT2TPredictor_v2(_BaseTensor2TensorPredictor):
 
     def initialize(self, src_sentence):
         """Set src_sentence to a prefix, reset consumed.
-        If src_sentence is a complete sentence, call reveal(text_encoder.EOS_ID)self.previous_encode =
+        If src_sentence is a complete sentence, call reveal(text_encoder.EOS_ID)
         """
         self.consumed = []
         self.src_sentence = src_sentence

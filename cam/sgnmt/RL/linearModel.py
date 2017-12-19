@@ -5,6 +5,7 @@ import tensorflow as tf
 import numpy as np
 from model import Model
 
+
 class Config:
     """Holds model hyperparams and data information.
 
@@ -13,15 +14,17 @@ class Config:
     instantiation.
     """
     d_model = 512
-    max_length = 100 # longest sequence of actions (R/W)
+    max_length = 100# longest sequence of actions (R/W)
     dropout = 0.8
     hidden_size = 64
-    batch_size = 2 #32
-    n_epochs = 10
+    batch_size = 32 #32
+    n_epochs = 10   # Not used, running a single epoch is taking too long
+    n_batches = 1024
     lr = 0.001
     eps = 1.0       # initial probability of choosing random action
+    min_eps = 0.001 # minimum probability of choosing random action
 
-    c_trg = 8      # target consecutive delay
+    c_trg = 8       # target consecutive delay
     d_trg = 0.8     # target average proportion
     alpha = -0.2    # for consecutive delay
     beta = -0.1     # for average proportion
@@ -36,6 +39,7 @@ class Config:
             self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
+
 
 class linearModel(Model):
     """
@@ -54,10 +58,11 @@ class linearModel(Model):
         actions_holder: Chosen actions, flatten [max_length, batch_size]
         dropout_holder: Dropout value for regularisation
         """
-        self.input_holder = tf.placeholder(tf.float32, [None, self.config.d_model])
+        self.input_holder = tf.placeholder(tf.float32, [None, self.config.d_model],
+                                           name="input_holder")
         self.reward_holder = tf.placeholder(tf.float32, [None])
         self.actions_holder = tf.placeholder(tf.int32, [None])
-        self.dropout_holder = tf.placeholder(tf.float32)
+        self.dropout_holder = tf.placeholder(tf.float32, name="dropout_holder")
 
     def create_feed_dict(self, inputs_batch, actions=None, rewards=None, dropout=1):
         """Creates the feed_dict for the linear RL agent.
@@ -113,7 +118,7 @@ class linearModel(Model):
 
             h = tf.nn.relu(tf.matmul(self.input_holder, W) + b1)
             h_drop = tf.nn.dropout(h, self.dropout_holder)
-            self.preds = tf.nn.softmax(tf.matmul(h_drop, U) + b2)
+            self.preds = tf.nn.softmax(tf.matmul(h_drop, U) + b2, name="predictions")
 
         return self.preds
 

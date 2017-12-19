@@ -80,7 +80,9 @@ class Model(object):
         Returns:
             train_op: The Op for training.
         """
-        train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss)
+        global_step = tf.Variable(0, name = 'global_step', trainable=False)
+        train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss, 
+                                                    global_step = global_step)
         return train_op
 
     def train_on_batch(self, sess, inputs_batch, targets_batch):
@@ -111,7 +113,7 @@ class Model(object):
             dropout = self.config.dropout
         feed = self.create_feed_dict(inputs_batch, dropout=dropout)
         predictions = sess.run(self.pred, feed_dict=feed)
-        actions = sess.run(tf.argmax(predictions, axis=1))
+        actions = np.argmax(predictions, axis=1)
 
         # choose a random action with probability eps
         # Note 50% random actions will be different from the original one
@@ -188,6 +190,9 @@ class Model(object):
                                     or hypo.netRead < -0.25*hypo.progress:
                 #logging.info("Decoding finished!!!")
                 continue # decoding finished or forced to stop (written too much)
+
+            # set the source prefix to that in the hypo
+            self.predictor.initialize(self.all_src[hypo.lst_id][0:hypo.progress])
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
             #logging.info("Actions length: %d" % len(hypo.actions))
@@ -219,6 +224,9 @@ class Model(object):
                             dtype=np.float32)
         for sentence in range(h_states.shape[0]):
             hypo = self.cur_hypos[sentence][0]
+            # set the source prefix to that in the hypo
+            self.predictor.initialize(self.all_src[hypo.lst_id][0:hypo.progress])
+            # set the consumed target in the hypo
             self.decoder.set_predictor_states(
                                         copy.deepcopy(hypo.predictor_states) )
             h_states[sentence,:] = self.predictor.get_last_decoder_state()
