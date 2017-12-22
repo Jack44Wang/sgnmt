@@ -9,11 +9,15 @@ import tensorflow as tf
 
 from bleu import get_incremental_BLEU
 from cam.sgnmt import utils
-from cam.sgnmt import decode_utils
+
+#from cam.sgnmt.decode_utils import create_decoder, create_output_handlers, \
+                                #prepare_sim_decode, prepare_trg_sentences
 
 try:
     # Requires tensor2tensor
     from tensor2tensor.data_generators import text_encoder
+    # resolve cyclic dependency
+    from cam.sgnmt import decode_utils
 except ImportError:
     pass
 

@@ -81,7 +81,8 @@ def do_train_small(args, shuffle=True):
                 targets_batch = [linModel.all_trg[i] for i in batch_indices]
                 loss = linModel.train_on_batch(session, targets_batch)
                 logging.info("progress: %d/%d" % (batch_start, train_size))
-                logging.info("loss: %d\n" % loss)
+                logging.info("eps: %f" % linModel.config.eps)
+                logging.info("loss: %f\n" % loss)
                 # monitored training session handles the checkpoint saving
                 if nb % 6 == 0 and nb != 0:
                     linModel.config.eps = max(config.min_eps, 0.9*linModel.config.eps)

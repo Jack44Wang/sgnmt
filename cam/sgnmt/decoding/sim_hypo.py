@@ -48,6 +48,8 @@ class SimHypothesis(Hypothesis):
                 current_delay += 1
             else:
                 cum_delay += current_delay
+        if current_delay == 0 or current_delay == len(self.actions):
+            return 1.0
         return 1.0*cum_delay / (current_delay*(len(self.actions)-current_delay))
 
     def get_consecutive_wait(self):

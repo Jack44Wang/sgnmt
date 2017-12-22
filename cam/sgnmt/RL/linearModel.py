@@ -32,7 +32,7 @@ class Config:
     def __init__(self, args):
         self.args = args
 
-        if "model_path" in args:
+        if args is not None and "model_path" in args:
             # Where to save things.
             self.output_path = args.model_path
         else:

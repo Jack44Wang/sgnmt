@@ -77,15 +77,24 @@ class SimBeamDecoder_v2(Decoder):
         self.pure_heuristic_scores = decoder_args.pure_heuristic_scores
         self.entropy_bound = 4.0
 
-        self.config = Config(None) # just to get path
-        RL_graph = tf.Graph()
-        with RL_graph.as_default() as g:
+        if not "train_flag" in decoder_args:
+            # if doing training of RL, do not execute the following code
+            self.config = Config(None) # just to get path
+            # The following does NOT use monitored session#####################
+            self.mon_sess = tf.Session()
+            my_saver = tf.train.import_meta_graph(
+                        saver.latest_checkpoint(self.config.output_path) + '.meta')
+            my_saver.restore(self.mon_sess, 
+                             tf.train.latest_checkpoint(self.config.output_path))
+            
+            #self.mon_sess = self._create_session()
+            RL_graph = tf.get_default_graph()
             # restore placeholder and result tensors
-            self._input_holder = g.get_tensor_by_name("input_holder:0")
-            self._dropout_holder = g.get_tensor_by_name("dropout_holder:0")
-            self._prediction_op = g.get_tensor_by_name("linear/predictions:0")
+            self._input_holder = RL_graph.get_tensor_by_name("input_holder:0")
+            self._dropout_holder = RL_graph.get_tensor_by_name("dropout_holder:0")
+            self._prediction_op = RL_graph.get_tensor_by_name("linear/predictions:0")
+            
 
-            self.mon_sess = self._create_session()
 
     
     def _create_session(self):
@@ -238,11 +247,13 @@ class SimBeamDecoder_v2(Decoder):
             self.consume(hypo.word_to_consume)
 
         action_probs = self.mon_sess.run(self._prediction_op,
-            {self._input_holder: self.predictors[0].get_last_decoder_state(),
+            {self._input_holder: np.reshape(self.predictors[0][0].get_last_decoder_state(), 
+                                           (-1,512)),
              self._dropout_holder: 1.0} )
 
         self.set_predictor_states(predictor_state_save) # restore states
-        return action_probs[0]
+        #logging.info("read probability: %f" % action_probs[0][0])
+        return action_probs[0][0]
 
     def _write_step(self, hypos):
         """Execute one step of WRITE action for all of the current hypotheses,
@@ -308,7 +319,7 @@ class SimBeamDecoder_v2(Decoder):
                     self._reveal_source_word(text_encoder.EOS_ID, hypos)
             else:
                 # confident on prediction, expand hypos
-                self._write_step(hypos)
+                hypos = self._write_step(hypos)
 
         logging.info("Processed source %d / %d" %
                                         (hypos[0].progress, len(src_sentence)))
