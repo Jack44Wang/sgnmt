@@ -15,7 +15,7 @@ class Config:
     """
     d_model = 512
     max_length = 100# longest sequence of actions (R/W)
-    dropout = 0.8
+    dropout = 0.5
     hidden_size = 64
     batch_size = 32 #32
     n_epochs = 10   # Not used, running a single epoch is taking too long
@@ -26,8 +26,8 @@ class Config:
 
     c_trg = 8       # target consecutive delay
     d_trg = 0.8     # target average proportion
-    alpha = -0.2    # for consecutive delay
-    beta = -0.1     # for average proportion
+    alpha = -0.01   # for consecutive delay
+    beta = -0.05     # for average proportion
 
     def __init__(self, args):
         self.args = args
@@ -141,8 +141,8 @@ class linearModel(Model):
         indices = tf.stack(
             [tf.range(tf.shape(probs_history)[0]), self.actions_holder],
             axis=1 ) # which element to pick in 2D array
-        chosen_actions = tf.gather_nd(probs_history, indices)
-        raw_loss = tf.log(chosen_actions)*self.reward_holder
+        chosen_actions = tf.maximum(0.01, tf.gather_nd(probs_history, indices))
+        raw_loss = tf.log(chosen_actions) * self.reward_holder
         loss = -tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
         return loss
 
@@ -183,6 +183,9 @@ class linearModel(Model):
         for idx, hypo in enumerate(self.cur_hypos):
             self.cur_hypos[idx] = hypo[0].generate_full_hypothesis()
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch)
+        #logging.info("The max reward in this batch is: %f" % np.amax(cum_rewards))
+        #logging.info("The min reward in this batch is: %f" % np.amin(cum_rewards))
+        #logging.info("The mean reward in this batch is: %f \n" % np.mean(cum_rewards))
 
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),

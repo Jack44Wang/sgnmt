@@ -252,7 +252,7 @@ class SimBeamDecoder_v2(Decoder):
              self._dropout_holder: 1.0} )
 
         self.set_predictor_states(predictor_state_save) # restore states
-        #logging.info("read probability: %f" % action_probs[0][0])
+        logging.info("read probability: %f" % action_probs[0][0])
         return action_probs[0][0]
 
     def _write_step(self, hypos):
