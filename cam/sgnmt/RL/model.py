@@ -205,13 +205,13 @@ class Model(object):
                 #logging.info("Sentence length: %d/%d" %
                 #                (hypo.progress, len(self.all_src[hypo.lst_id])))
 
-                self.decoder._reveal_source_word(
-                            self.all_src[hypo.lst_id][hypo.progress], [hypo] )
+                hypo = self.decoder._reveal_source_word(
+                            self.all_src[hypo.lst_id][hypo.progress], [hypo] )[0]
                 hypo.progress += 1
                 hypo.netRead += 1
                 if hypo.progress == len(self.all_src[hypo.lst_id]): # reach EOS
-                    self.decoder._reveal_source_word(text_encoder.EOS_ID,
-                                                     [hypo] )
+                    hypo = self.decoder._reveal_source_word(
+                                                 text_encoder.EOS_ID, [hypo] )[0]
             else: # WRITE
                 self.cur_hypos[sentence][0] = self.decoder._write_step([hypo])[0]
 

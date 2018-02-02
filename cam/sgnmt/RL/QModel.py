@@ -4,39 +4,8 @@ from datetime import datetime
 import tensorflow as tf
 import numpy as np
 from model import Model
+from linearModel import Config
 from bleu import corpus_bleu
-
-class Config:
-    """Holds model hyperparams and data information.
-
-    The config class is used to store various hyperparameters and dataset
-    information parameters. Model objects are passed a Config() object at
-    instantiation.
-    """
-    d_model = 512
-    max_length = 100 # longest sequence of actions (R/W)
-    dropout = 0.8
-    hidden_size = 64
-    batch_size = 32 #32
-    n_epochs = 10
-    lr = 0.001
-    eps = 1.0       # initial probability of choosing random action
-
-    c_trg = 8      # target consecutive delay
-    d_trg = 0.8     # target average proportion
-    alpha = -0.2    # for consecutive delay
-    beta = -0.1     # for average proportion
-
-    def __init__(self, args):
-        self.args = args
-
-        if "model_path" in args:
-            # Where to save things.
-            self.output_path = args.model_path
-        else:
-            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train/"
-        self.model_output = self.output_path + "model.weights"
-        self.log_output = self.output_path + "log"
 
 class QModel(Model):
     """
@@ -179,7 +148,8 @@ class QModel(Model):
         # give the quality rewards (BLEU) at the end
         BLEU = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
         for idx in range(len(self.cur_hypos)):
-            targets[len(self.cur_hypos[idx].actions)-1,idx] = BLEU
+            targets[len(self.cur_hypos[idx].actions)-1,idx] = 
+                BLEU + self.cur_hypos[idx].get_last_delay_reward(self.config)
 
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),

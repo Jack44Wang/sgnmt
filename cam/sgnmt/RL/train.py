@@ -10,6 +10,7 @@ from tensorflow.python.training import training
 
 from linearModel import Config
 from linearModel import linearModel
+from QModel import QModel
 from cam.sgnmt import utils
 from cam.sgnmt.ui import get_args, validate_args
 
@@ -58,7 +59,7 @@ def do_train_small(args, shuffle=True):
     with tf.Graph().as_default():
         logging.info("Building model...",)
         start = time.time()
-        linModel = linearModel(config)
+        linModel = QModel(config)
         logging.info("took %.2f seconds", time.time() - start)
 
         train_size = len(linModel.all_hypos)
@@ -85,7 +86,7 @@ def do_train_small(args, shuffle=True):
                 logging.info("loss: %f\n" % loss)
                 # monitored training session handles the checkpoint saving
                 if nb % 6 == 0 and nb != 0:
-                    linModel.config.eps = max(config.min_eps, 0.9*linModel.config.eps)
+                    linModel.config.eps = max(config.min_eps, 0.95*linModel.config.eps)
                     #saver.save(session, config.output_path + "RLmodel", global_step=i)
 
 

@@ -14,7 +14,7 @@ class Config:
     instantiation.
     """
     d_model = 512
-    max_length = 100# longest sequence of actions (R/W)
+    max_length = 100 # longest sequence of actions (R/W)
     dropout = 0.5
     hidden_size = 64
     batch_size = 32 #32
@@ -22,12 +22,12 @@ class Config:
     n_batches = 1024
     lr = 0.001
     eps = 1.0       # initial probability of choosing random action
-    min_eps = 0.001 # minimum probability of choosing random action
+    min_eps = 0.05 # minimum probability of choosing random action
 
-    c_trg = 8       # target consecutive delay
+    c_trg = 18       # target consecutive delay
     d_trg = 0.8     # target average proportion
-    alpha = -0.01   # for consecutive delay
-    beta = -0.05     # for average proportion
+    alpha = 0.0   # for consecutive delay
+    beta = -0.2     # for average proportion
 
     def __init__(self, args):
         self.args = args
@@ -36,7 +36,7 @@ class Config:
             # Where to save things.
             self.output_path = args.model_path
         else:
-            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train/"
+            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_Q1/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 

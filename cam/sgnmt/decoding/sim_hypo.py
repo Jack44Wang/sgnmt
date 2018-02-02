@@ -81,22 +81,45 @@ class SimHypothesis(Hypothesis):
 
         Rd = np.zeros(config.max_length)
         #logging.info("actions length: %d" % len(self.actions))
-        #logging.info(self.actions)
+        logging.info(self.actions)
 
+        prev_dt = config.d_trg
         for i, action in enumerate(self.actions):
             if action == 'r':
                 current_consec += 1
+                current_delay += 1
                 consec_penalty = 2 if current_consec > config.c_trg else 0
             else:
                 current_consec = 0
+                consec_penalty = 0
                 cum_delay += current_delay
-            dt = 1.0*cum_delay / max(1, (current_delay*(i - current_delay)))
-            ap_penalty = max(0, dt - config.d_trg)
+            if cum_delay == 0:
+                dt = 1.0 # all reads
+            else:
+                dt = 1.0*cum_delay / (current_delay*(i - current_delay + 1))
+            ap_penalty = (dt - prev_dt) if dt > config.d_trg else 0
             #logging.info("%d/%d" % (i, config.max_length))
+            prev_dt = dt
             Rd[i] = config.alpha*consec_penalty + config.beta*ap_penalty
-
         #logging.info("Delay rewards Rd:")
-        #logging.info(Rd)
+        #Rd[0] = 0.0 # no penalty for the first read
+        logging.info(Rd)
+
+        return Rd
+
+    def get_last_delay_reward(self.config):
+        """Return the delay reward (-ve) for the hypothesis
+        Args:
+            config: Configuration object for rewards evaluation
+        Returns:
+            Rd:     Final delay reward
+        """
+        logging.info(self.actions)
+        consec_penalty = 2 if current_consec > config.c_trg else 0
+        ap_penalty = (dt - prev_dt) if dt > config.d_trg else 0
+
+        Rd = config.alpha*consec_penalty + config.beta*ap_penalty
+        logging.info(Rd)
 
         return Rd
 

@@ -222,6 +222,7 @@ class SimBeamDecoder_v2(Decoder):
             hypos = [hypos[0]]
         else:
             logging.warn("Simultaneous translation should stop!")
+        return hypos
 
     def _get_prediction_entropy(self, hypo):
         """Get the condidence of predictions from ``predict_next()``
@@ -311,12 +312,14 @@ class SimBeamDecoder_v2(Decoder):
                 self._get_action_prediction(hypos[0]) > 0.5):
                 # not confident on prediction, or produced too many words,
                 # reveal the next word
-                self._reveal_source_word(src_sentence[hypos[0].progress], hypos)
+                hypos = self._reveal_source_word(src_sentence[hypos[0].progress], 
+                                                 hypos )
+                assert len(hypos) == 1
                 for hypo in hypos:
                     hypo.progress += 1
                     hypo.netRead += 1
                 if hypos[0].progress == len(src_sentence): # reach the EOS
-                    self._reveal_source_word(text_encoder.EOS_ID, hypos)
+                    hypos = self._reveal_source_word(text_encoder.EOS_ID, hypos)
             else:
                 # confident on prediction, expand hypos
                 hypos = self._write_step(hypos)
