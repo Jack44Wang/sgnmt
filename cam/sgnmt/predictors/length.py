@@ -23,6 +23,31 @@ EPS_R = 0.1;
 EPS_P = 0.00001;
 
 
+def load_external_lengths(path):
+    """Loads a length distribution from a plain text file. The file
+    must contain blank separated <length>:<score> pairs in each line.
+    
+    Args:
+        path (string): Path to the length file.
+    
+    Returns:
+        list of dicts mapping a length to its scores, one dict for each
+        sentence.
+    """
+    lengths = []
+    with open(path) as f:
+        for line in f:
+            scores = {}
+            for pair in line.strip().split():
+                if ':' in pair:
+                    length, score = pair.split(':')
+                    scores[int(length)] = float(score)
+                else:
+                    scores[int(pair)] = 0.0
+            lengths.append(scores)
+    return lengths
+
+
 class NBLengthPredictor(Predictor):
     """This predictor assumes that target sentence lengths are 
     distributed according a negative binomial distribution with 
@@ -208,7 +233,7 @@ class NBLengthPredictor(Predictor):
 
 
 class WordCountPredictor(Predictor):
-    """This predictor adds the number of words as feature. """
+    """This predictor adds the (negative) number of words as feature. """
     
     def __init__(self, word = -1):
         """Creates a new word count predictor instance.
@@ -276,14 +301,7 @@ class ExternalLengthPredictor(Predictor):
                            distributions.
         """
         super(ExternalLengthPredictor, self).__init__()
-        self.trg_lengths = []
-        with open(path) as f:
-            for line in f:
-                scores = {}
-                for pair in line.strip().split():
-                    length,score = pair.split(':')
-                    scores[int(length)] = float(score)
-                self.trg_lengths.append(scores)
+        self.trg_lengths = load_external_lengths(path)
         
     def get_unk_probability(self, posterior):
         """Returns 0=log 1 if the partial hypothesis does not exceed
@@ -570,74 +588,141 @@ class UnkCountPredictor(Predictor):
         """Returns true if the state is the same"""
         return state1 == state2
 
+    
+class NgramizePredictor(Predictor):
+    """This wrapper extracts n-gram posteriors from a predictor which
+    does not depend on the particular argument of `consume()`. In that
+    case, we can build a lookup mechanism for all possible n-grams in
+    a single forward pass through the predictor search space: We record
+    all posteriors (predict_next() return values) of the slave
+    predictor during a greedy pass in `initialize()`. The wrapper
+    predictor state is the current n-gram history. We use the 
+    (semiring) sum over all possible positions of the current n-gram
+    history in the recorded slave predictor posteriors to form the
+    n-gram scores returned by this predictor.
 
-class BracketPredictor(UnboundedVocabularyPredictor):
-    """This predictor constrains the output to well-formed bracket
-    expressions.
+    Note that this wrapper does not work correctly if the slave
+    predictor feeds back the selected token in the history, ie. depends
+    on the particular token which is provided via `consume()`.
+
+    TODO: Make this wrapper work with slaves which return dicts.
     """
     
-    def __init__(self, max_terminal_id, closing_bracket_id, max_depth=-1):
-        """Creates a new bracket predictor.
+    def __init__(self, min_order, max_order, max_len_factor, slave_predictor):
+        """Creates a new ngramize wrapper predictor.
         
         Args:
-            max_terminal_id (int): All IDs greater than this are brackets
-            closing_bracket_id (int): All brackets except this one are opening
-            max_depth (int): If positive, restrict the maximum depth
+            min_order (int): Minimum n-gram order
+            max_order (int): Maximum n-gram order
+            max_len_factor (int): Stop the forward pass through the 
+                                  slave predictor after src_length
+                                  times this factor
+            slave_predictor (Predictor): Instance of the predictor which
+                                         uses the source sentences in
+                                         ``src_test``
+
+        Raises:
+            AttributeError if order is not positive.
         """
-        super(BracketPredictor, self).__init__()
-        self.max_terminal_id = max_terminal_id
-        self.closing_bracket_id = closing_bracket_id
-        self.max_depth = max_depth if max_depth >=0 else 1000000
+        super(NgramizePredictor, self).__init__()
+        if max_order < 1:
+             raise AttributeError("max_ngram_order must be positive.")
+        if min_order > max_order:
+             raise AttributeError("min_ngram_order greater than max_order.")
+        self.slave_predictor = slave_predictor
+        self.max_history_length = max_order - 1
+        self.min_order = max(1, min_order)
+        self.max_len_factor = max_len_factor
     
     def initialize(self, src_sentence):
-        """Sets the current depth to 0.
-        
-        Args:
-            src_sentence (list): Not used
+        """Runs greedy decoding on the slave predictor to populate
+        self.scores and self.unk_scores, resets the history.
         """
-        self.cur_depth = 0
+        self.slave_predictor.initialize(src_sentence)
+        self.scores = []
+        self.unk_scores = []
+        trg_word = -1
+        max_len = self.max_len_factor * len(src_sentence)
+        l = 0
+        while trg_word != utils.EOS_ID and l <= max_len:
+            posterior = self.slave_predictor.predict_next()
+            trg_word = utils.argmax(posterior)
+            self.scores.append(posterior)
+            self.unk_scores.append(self.slave_predictor.get_unk_probability(
+                posterior))
+            self.slave_predictor.consume(utils.UNK_ID)
+            l += 1
+        logging.debug("ngramize uses %d time steps." % l)
+        self.history = []
+        self.cur_unk_score = utils.NEG_INF
     
-    def predict_next(self, words):
-        """If the maximum depth is reached, exclude all opening
-        brackets. If history is not balanced, exclude EOS. If the
-        current depth is zero, exclude closing brackets.
-        
-        Args:
-            words (list): Set of words to score
-        Returns:
-            dict.
-        """
-        if self.cur_depth == 0:
-            return {self.closing_bracket_id: utils.NEG_INF}
-        if self.cur_depth >= self.max_depth:
-            return {w: utils.NEG_INF for w in words 
-                if w > self.max_terminal_id and w != self.closing_bracket_id}
-        return {utils.EOS_ID: utils.NEG_INF}
+    def initialize_heuristic(self, src_sentence):
+        """Pass through to slave predictor """
+        logging.warning("ngramize does not support predictor heuristics")
+        self.slave_predictor.initialize_heuristic(src_sentence)
+    
+    def predict_next(self):
+        """Looks up ngram scores via self.scores. """
+        cur_hist_length = len(self.history)
+        this_scores = [[] for _ in xrange(cur_hist_length+1)]
+        this_unk_scores = [[] for _ in xrange(cur_hist_length+1)]
+        for pos in xrange(len(self.scores)):
+            this_scores[0].append(self.scores[pos])
+            this_unk_scores[0].append(self.unk_scores[pos])
+            acc = 0.0
+            for order, word in enumerate(self.history):
+                if pos + order + 1 >= len(self.scores):
+                    break
+                acc += utils.common_get(
+                    self.scores[pos + order], word, 
+                    self.unk_scores[pos + order])
+                this_scores[order+1].append(acc + self.scores[pos + order + 1])
+                this_unk_scores[order+1].append(
+                    acc + self.unk_scores[pos + order + 1])
+        combined_scores = []
+        combined_unk_scores = []
+        for order, (scores, unk_scores) in enumerate(zip(this_scores, 
+                                                         this_unk_scores)):
+            if scores and order + 1 >= self.min_order:
+                score_matrix = np.vstack(scores)
+                combined_scores.append(logsumexp(score_matrix, axis=0))
+                combined_unk_scores.append(utils.log_sum(unk_scores))
+        if not combined_scores:
+            self.cur_unk_score = 0.0
+            return {}
+        self.cur_unk_score = sum(combined_unk_scores)
+        return sum(combined_scores)
         
     def get_unk_probability(self, posterior):
-        """Always returns 0.0"""
-        return 0.0
+        return self.cur_unk_score
     
     def consume(self, word):
-        """Updates current depth."""
-        if word == self.closing_bracket_id:
-            self.cur_depth -= 1
-        elif word > self.max_terminal_id:
-            self.cur_depth += 1
+        """Pass through to slave predictor """
+        if self.max_history_length > 0:
+            self.history.append(word)
+            self.history = self.history[-self.max_history_length:]
     
     def get_state(self):
-        """Returns the current depth"""
-        return self.cur_depth
+        """State is the current n-gram history. """
+        return self.history, self.cur_unk_score
     
     def set_state(self, state):
-        """Sets the current depth"""
-        self.cur_depth = state
+        """State is the current n-gram history. """
+        self.history, self.cur_unk_score = state
 
     def reset(self):
-        """Empty."""
-        pass
+        """Pass through to slave predictor """
+        self.slave_predictor.reset()
+
+    def set_current_sen_id(self, cur_sen_id):
+        """We need to override this method to propagate current\_
+        sentence_id to the slave predictor
+        """
+        super(NgramizePredictor, self).set_current_sen_id(cur_sen_id)
+        self.slave_predictor.set_current_sen_id(cur_sen_id)
     
     def is_equal(self, state1, state2):
-        """Returns true if the depth is the same"""
+        """Pass through to slave predictor """
         return state1 == state2
-    
+        
+

@@ -76,9 +76,9 @@ def switch_to_t2t_indexing():
     global GO_ID
     global EOS_ID
     global UNK_ID
-    GO_ID = 3 # Usually not used
+    GO_ID = 2 # Usually not used
     EOS_ID = 1
-    UNK_ID = 2 # Don't rely on this: UNK not standardized in T2T
+    UNK_ID = 3 # Don't rely on this: UNK not standardized in T2T
 
 
 # Log summation
@@ -117,7 +117,9 @@ log_sum = log_sum_log_semiring
 """Defines which log summation function to use. """
 
 
-def oov_to_unk(seq, vocab_size, unk_idx = UNK_ID):
+def oov_to_unk(seq, vocab_size, unk_idx=None):
+    if unk_idx is None:
+        unk_idx = UNK_ID
     return [x if x < vocab_size else unk_idx for x in seq]
 
 # Maximum functions
@@ -342,6 +344,12 @@ def apply_trg_wmap(seq, inv_wmap = None):
 
 TMP_FILENAME = '/tmp/sgnmt.%s.fst' % os.getpid()
 """Temporary file name to use if an FST file is zipped. """
+
+
+def split_comma(s):
+    """Splits a string at commas and removes blanks."""
+    parts = s.split(",")
+    return [el.strip() for el in parts]
 
 
 def w2f(fstweight):

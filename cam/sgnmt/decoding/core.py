@@ -1,7 +1,8 @@
-"""Contains all the basic interfaces and abstract classes for decoding.
-This is mainly ``Predictor`` and ``Decoder``. Functionality should be
-implemented mainly in the ``predictors`` package for predictors and in
-the ``decoding.decoder`` module for decoders.
+"""Contains all the basic interfaces and abstract classes for decoders.
+The ``Decoder`` class provides common functionality for all decoders.
+The ``Hypothesis`` class represents complete hypotheses, which are 
+returned by decoders. ``PartialHypothesis`` is a helper class which can
+be used by predictors to represent translation prefixes.
 """
 
 from abc import abstractmethod
@@ -126,7 +127,7 @@ class PartialHypothesis(object):
         hypo.score = self.score + score
         hypo.score_breakdown = copy.copy(self.score_breakdown)
         hypo.trgt_sentence = self.trgt_sentence + [word]
-        hypo.add_score_breakdown(score_breakdown)
+        hypo.score_breakdown.append(score_breakdown)
         return hypo
     
     def cheap_expand(self, word, score, score_breakdown):
@@ -151,15 +152,8 @@ class PartialHypothesis(object):
         hypo.score_breakdown = copy.copy(self.score_breakdown)
         hypo.trgt_sentence = self.trgt_sentence + [word]
         hypo.word_to_consume = word
-        hypo.add_score_breakdown(score_breakdown)
+        hypo.score_breakdown.append(score_breakdown)
         return hypo
-
-    def add_score_breakdown(self, added_scores):
-        """Helper function for adding the word level score breakdowns
-        for the newly added word to the hypothesis score breakdown.
-        """
-        self.score_breakdown.append(added_scores)
-        self.score = breakdown2score_partial(self.score, self.score_breakdown)
 
 
 """The ``CLOSED_VOCAB_SCORE_NORM_*`` constants define the normalization
@@ -261,7 +255,7 @@ class Heuristic(Observer):
         pass
     
 
-def breakdown2score_sum(working_score, score_breakdown):
+def breakdown2score_sum(working_score, score_breakdown, full=False):
     """Implements the combination scheme 'sum' by always returning
     ``working_score``. This function is designed to be assigned to
     the globals ``breakdown2score_partial`` or ``breakdown2score_full``
@@ -271,7 +265,10 @@ def breakdown2score_sum(working_score, score_breakdown):
                                weighted sum of the scores in
                                ``score_breakdown``
         score_breakdown (list): Breakdown of the combined score into
-                                predictor scores
+                                predictor scores (not used).
+        full (bool): If True, reevaluate all time steps. If False,
+                     assume that this function has been called in the
+                      previous time step (not used).
     
     Returns:
         float. Returns ``working_score``
@@ -279,7 +276,7 @@ def breakdown2score_sum(working_score, score_breakdown):
     return working_score
 
 
-def breakdown2score_length_norm(working_score, score_breakdown):
+def breakdown2score_length_norm(working_score, score_breakdown, full=False):
     """Implements the combination scheme 'length_norm' by normalizing
     the sum of the predictor scores by the length of the current 
     sequence (i.e. the length of ``score_breakdown``. This function is
@@ -293,6 +290,9 @@ def breakdown2score_length_norm(working_score, score_breakdown):
                                ``score_breakdown``. Not used.
         score_breakdown (list): Breakdown of the combined score into
                                 predictor scores
+        full (bool): If True, reevaluate all time steps. If False,
+                     assume that this function has been called in the
+                      previous time step (not used).
     
     Returns:
         float. Returns a length normalized ``working_score``
@@ -302,7 +302,7 @@ def breakdown2score_length_norm(working_score, score_breakdown):
     return score / len(score_breakdown)
 
 
-def breakdown2score_bayesian(working_score, score_breakdown):
+def breakdown2score_bayesian(working_score, score_breakdown, full=False):
     """This realizes score combination following the Bayesian LM 
     interpolation scheme from (Allauzen and Riley, 2011)
     
@@ -321,22 +321,71 @@ def breakdown2score_bayesian(working_score, score_breakdown):
                                ``score_breakdown``. Not used.
         score_breakdown (list): Breakdown of the combined score into
                                 predictor scores
+        full (bool): If True, reevaluate all time steps. If False,
+                     assume that this function has been called in the
+                      previous time step.
     
     Returns:
         float. Bayesian interpolated predictor scores
+    """
+    if not score_breakdown or working_score == NEG_INF:
+        return working_score
+    if full:
+        acc = []
+        alphas = [] # list of all alpha_i,k
+        # Write priors to alphas
+        for (p, w) in score_breakdown[0]:
+            alphas.append(np.log(w))
+        for pos in score_breakdown: # for each position in the hypothesis
+            for k, (p, w) in enumerate(pos): 
+                alphas[k] += p
+            alpha_part = utils.log_sum(alphas)
+            scores = [alphas[k] - alpha_part + p 
+                    for k, (p, w) in enumerate(pos)]
+            acc.append(utils.log_sum(scores)) 
+        return sum(acc)
+    else: # Incremental: Alphas are in predictor weights
+        if len(score_breakdown) == 1:
+            scores = [np.log(w) + p for p, w in score_breakdown[0]]
+            return utils.log_sum(scores)
+        priors = [s[1] for s in score_breakdown[0]]
+        last_score = sum([w * s[0] 
+                          for w, s in zip(priors, score_breakdown[-1])])
+        working_score -= last_score
+        # Now, working score does not include the last time step anymore
+        # Compute updated alphas
+        alphas = [np.log(p) for p in priors]
+        for pos in score_breakdown[:-1]:
+            for k, (p, _) in enumerate(pos):
+                alphas[k] += p
+        alpha_part = utils.log_sum(alphas)
+        scores = [alphas[k] - alpha_part + p 
+                for k, (p, w) in enumerate(score_breakdown[-1])]
+        updated_breakdown = [(p, np.exp(alphas[k] - alpha_part))
+                for k, (p, w) in enumerate(score_breakdown[-1])]
+        score_breakdown[-1] = updated_breakdown
+        working_score += utils.log_sum(scores)
+        return working_score
+
+
+def breakdown2score_bayesian_loglin(working_score, score_breakdown, full=False):
+    """Like bayesian combination scheme, but uses loglinear model
+    combination rather than linear interpolation weights
+   
+    TODO: Implement incremental version of it, write weights into breakdowns.
     """
     if not score_breakdown:
         return working_score
     acc = []
     prev_alphas = [] # list of all alpha_i,k
     # Write priors to alphas
-    for (p,w) in score_breakdown[0]:
+    for (p, w) in score_breakdown[0]:
         prev_alphas.append(np.log(w))
     for pos in score_breakdown: # for each position in the hypothesis
         alphas = []
         sub_acc = []
         # for each predictor (p: p_k(w_i|h_i), w: prior p(k))
-        for k,(p,w) in enumerate(pos): 
+        for k, (p, w) in enumerate(pos): 
             alpha = prev_alphas[k] + p
             alphas.append(alpha)
             sub_acc.append(p + alpha)
@@ -345,14 +394,7 @@ def breakdown2score_bayesian(working_score, score_breakdown):
     return sum(acc)
 
 
-"""The function breakdown2score_partial is called at each hypothesis
-expansion. This should only be changed if --combination_scheme is not 
-'sum' and --apply_combination_scheme_to_partial_hypos is set to true.
-""" 
-breakdown2score_partial = breakdown2score_sum
-
-
-"""The function breakdown2score_full is called at each creation of a 
+"""The function breakdown2score_full is called at each generation of a 
 full hypothesis, i.e. only once per hypothesis
 """
 breakdown2score_full = breakdown2score_sum
@@ -517,6 +559,8 @@ class Decoder(Observable):
                 else:
                     max_arr_length = max(max_arr_length, len(posterior))
             if max_arr_length:
+                if all(all(el < max_arr_length for el in k) for k in key_sets):
+                    return xrange(max_arr_length)
                 key_sets.append(xrange(max_arr_length))
             if len(key_sets) == 1:
                 return key_sets[0]
@@ -558,9 +602,12 @@ class Decoder(Observable):
                 unrestricted.append(posterior)
         return restricted, unrestricted
     
-    def apply_predictors(self):
+    def apply_predictors(self, top_n=0):
         """Get the distribution over the next word by combining the
         predictor scores.
+
+        Args:
+            top_n (int): If positive, return only the best n words.
         
         Returns:
             combined,score_breakdown: Two dicts. ``combined`` maps 
@@ -589,17 +636,23 @@ class Decoder(Observable):
                 bounded_idx += 1
             posteriors.append(posterior)
             unk_probs.append(p.get_unk_probability(posterior))
-        ret = self.combine_posteriors(non_zero_words, posteriors, unk_probs)
+        ret = self.combine_posteriors(
+            non_zero_words, posteriors, unk_probs, top_n)
         if not self.allow_unk_in_output and utils.UNK_ID in ret[0]:
             del ret[0][utils.UNK_ID]
             del ret[1][utils.UNK_ID]
+        if top_n > 0 and len(ret[0]) > top_n:
+            top = utils.argmax_n(ret[0], top_n)
+            ret = ({w: ret[0][w] for w in top},
+                   {w: ret[1][w] for w in top})
         self.notify_observers(ret, message_type = MESSAGE_TYPE_POSTERIOR)
         return ret
     
     def _combine_posteriors_norm_none(self,
-                                      non_zero_words,
+                                       non_zero_words,
                                       posteriors,
-                                      unk_probs):
+                                      unk_probs,
+                                      top_n=0):
         """Combine predictor posteriors according the normalization
         scheme ``CLOSED_VOCAB_SCORE_NORM_NONE``. For more information
         on closed vocabulary predictor score normalization see the 
@@ -611,10 +664,29 @@ class Decoder(Observable):
                         with ``predict_next()``
             unk_probs: UNK probabilities of the predictors, calculated
                        with ``get_unk_probability``
+            top_n (int): If positive, return only top n words
         
         Returns:
             combined,score_breakdown: like in ``apply_predictors()``
         """
+        if isinstance(non_zero_words, xrange) and top_n > 0:
+            n_words = len(non_zero_words)
+            scaled_posteriors = []
+            for posterior, unk_prob, (_, weight) in zip(
+                          posteriors, unk_probs, self.predictors):
+                if isinstance(posterior, dict):
+                    arr = np.full(n_words, unk_prob)
+                    for word, score in posterior.iteritems():
+                        arr[word] = score
+                    scaled_posteriors.append(arr * weight)
+                else:
+                    n_unks = n_words - len(posterior)
+                    if n_unks:
+                        posterior = np.concatenate((
+                               posterior, np.full(n_unks, unk_prob)))
+                    scaled_posteriors.append(posterior * weight)
+            combined_scores = np.sum(scaled_posteriors, axis=0)
+            non_zero_words = utils.argmax_n(combined_scores, top_n)
         combined = {}
         score_breakdown = {}
         for trgt_word in non_zero_words:
@@ -629,7 +701,8 @@ class Decoder(Observable):
     def _combine_posteriors_norm_rescale_unk(self,
                                              non_zero_words,
                                              posteriors,
-                                             unk_probs):
+                                             unk_probs,
+                                             top_n=0):
         """Combine predictor posteriors according the normalization
         scheme ``CLOSED_VOCAB_SCORE_NORM_RESCALE_UNK``. For more 
         information on closed vocabulary predictor score normalization 
@@ -641,6 +714,7 @@ class Decoder(Observable):
                         with ``predict_next()``
             unk_probs: UNK probabilities of the predictors, calculated
                        with ``get_unk_probability``
+            top_n (int): If positive, return only top n words
         
         Returns:
             combined,score_breakdown: like in ``apply_predictors()``
@@ -656,13 +730,15 @@ class Decoder(Observable):
         return self._combine_posteriors_norm_none(
                           non_zero_words,
                           posteriors,
-                          [unk_probs[idx] - np.log(max(1.0, unk_counts[idx])) 
-                               for idx in xrange(n_predictors)])
+                          [unk_probs[idx] - np.log(max(1.0, unk_counts[idx]))
+                               for idx in xrange(n_predictors)],
+                          top_n)
     
     def _combine_posteriors_norm_exact(self,
                                        non_zero_words,
                                        posteriors,
-                                       unk_probs):
+                                       unk_probs,
+                                       top_n=0):
         """Combine predictor posteriors according the normalization
         scheme ``CLOSED_VOCAB_SCORE_NORM_EXACT``. For more information
         on closed vocabulary predictor score normalization see the 
@@ -674,6 +750,7 @@ class Decoder(Observable):
                         with ``predict_next()``
             unk_probs: UNK probabilities of the predictors, calculated
                        with ``get_unk_probability``
+            top_n (int): Not implemented!
         
         Returns:
             combined,score_breakdown: like in ``apply_predictors()``
@@ -702,7 +779,8 @@ class Decoder(Observable):
     def _combine_posteriors_norm_reduced(self,
                                          non_zero_words,
                                          posteriors,
-                                         unk_probs):
+                                         unk_probs,
+                                         top_n=0):
         """Combine predictor posteriors according the normalization
         scheme ``CLOSED_VOCAB_SCORE_NORM_REDUCED``. For more information
         on closed vocabulary predictor score normalization see the 
@@ -714,6 +792,7 @@ class Decoder(Observable):
                         with ``predict_next()``
             unk_probs: UNK probabilities of the predictors, calculated
                        with ``get_unk_probability``
+            top_n (int): Not implemented!
         
         Returns:
             combined,score_breakdown: like in ``apply_predictors()``
@@ -883,6 +962,7 @@ class Decoder(Observable):
         Returns:
             float. Weighted sum out1*weight1+out2*weight2...
         """
+        #return sum(f*w for f, w in x)
         (fAcc, _) = reduce(lambda (f1,w1), (f2,w2):(f1*w1 + f2*w2, 1.0),
                            x,
                            (0.0, 1.0))
