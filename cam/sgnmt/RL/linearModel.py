@@ -27,7 +27,7 @@ class Config:
     c_trg = 18       # target consecutive delay
     d_trg = 0.8     # target average proportion
     alpha = 0.0   # for consecutive delay
-    beta = -0.2     # for average proportion
+    beta = -0.2     # for average proportion -0.4 for Q
 
     def __init__(self, args):
         self.args = args
@@ -36,7 +36,7 @@ class Config:
             # Where to save things.
             self.output_path = args.model_path
         else:
-            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_Q1/"
+            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_12/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 

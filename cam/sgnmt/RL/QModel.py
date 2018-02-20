@@ -24,10 +24,11 @@ class QModel(Model):
         actions_holder: Chosen actions, flatten [max_length, batch_size]
         dropout_holder: Dropout value for regularisation
         """
-        self.input_holder = tf.placeholder(tf.float32, [None, self.config.d_model])
+        self.input_holder = tf.placeholder(tf.float32, [None, self.config.d_model],
+                                           name="input_holder")
         self.target_holder = tf.placeholder(tf.float32, [None])
         self.actions_holder = tf.placeholder(tf.int32, [None])
-        self.dropout_holder = tf.placeholder(tf.float32)
+        self.dropout_holder = tf.placeholder(tf.float32, name="dropout_holder")
 
     def create_feed_dict(self, inputs_batch, actions=None, targets=None, dropout=1):
         """Creates the feed_dict for the linear RL agent.
@@ -83,7 +84,7 @@ class QModel(Model):
 
             h = tf.nn.relu(tf.matmul(self.input_holder, W) + b1)
             h_drop = tf.nn.dropout(h, self.dropout_holder)
-            self.preds = tf.matmul(h_drop, U) + b2
+            self.preds = tf.add(tf.matmul(h_drop, U), b2, name="predictions")
 
         return self.preds
 
@@ -146,9 +147,9 @@ class QModel(Model):
             targets[action_length-1:,idx] = 0
 
         # give the quality rewards (BLEU) at the end
-        BLEU = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
+        _, BLEU = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
         for idx in range(len(self.cur_hypos)):
-            targets[len(self.cur_hypos[idx].actions)-1,idx] = 
+            targets[len(self.cur_hypos[idx].actions)-1,idx] = \
                 BLEU + self.cur_hypos[idx].get_last_delay_reward(self.config)
 
         train_dict = self.create_feed_dict(

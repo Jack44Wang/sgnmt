@@ -107,7 +107,7 @@ class SimHypothesis(Hypothesis):
 
         return Rd
 
-    def get_last_delay_reward(self.config):
+    def get_last_delay_reward(self, config):
         """Return the delay reward (-ve) for the hypothesis
         Args:
             config: Configuration object for rewards evaluation
@@ -115,8 +115,9 @@ class SimHypothesis(Hypothesis):
             Rd:     Final delay reward
         """
         logging.info(self.actions)
-        consec_penalty = 2 if current_consec > config.c_trg else 0
-        ap_penalty = (dt - prev_dt) if dt > config.d_trg else 0
+        consec_penalty = 2 if self.get_consecutive_wait() > config.c_trg else 0
+        dt = self.get_average_delay()
+        ap_penalty = (dt - config.d_trg) if dt > config.d_trg else 0
 
         Rd = config.alpha*consec_penalty + config.beta*ap_penalty
         logging.info(Rd)
