@@ -42,11 +42,8 @@ from cam.sgnmt.decoding.sepbeam import SepBeamDecoder
 from cam.sgnmt.decoding.syntaxbeam import SyntaxBeamDecoder
 from cam.sgnmt.decoding.mbrbeam import MBRBeamDecoder
 from cam.sgnmt.decoding.syncbeam import SyncBeamDecoder
-<<<<<<< HEAD
 from cam.sgnmt.decoding.sim_hypo import SimHypothesis
-=======
 from cam.sgnmt.decoding.combibeam import CombiBeamDecoder
->>>>>>> ucam-smt/master
 from cam.sgnmt.output import TextOutputHandler, \
                              DelayOutputHandler, \
                              NBestOutputHandler, \
@@ -73,33 +70,24 @@ from cam.sgnmt.predictors.vocabulary import IdxmapPredictor, \
                                             UnkvocabPredictor, \
                                             SkipvocabPredictor
 from cam.sgnmt.predictors.ngram import SRILMPredictor
-<<<<<<< HEAD
-from cam.sgnmt.predictors.tf_t2t import T2TPredictor, T2TBFSLayerbylayerPredictor, \
-                                        T2TDFSLayerbylayerPredictor
+from cam.sgnmt.predictors.tf_t2t import T2TPredictor
 from cam.sgnmt.predictors.sim_t2t import SimT2TPredictor
 from cam.sgnmt.predictors.sim_t2t_v2 import SimT2TPredictor_v2
-=======
-from cam.sgnmt.predictors.tf_t2t import T2TPredictor
 from cam.sgnmt.predictors.tf_nizza import NizzaPredictor, LexNizzaPredictor
->>>>>>> ucam-smt/master
 from cam.sgnmt.predictors.tokenization import Word2charPredictor, FSTTokPredictor
 from cam.sgnmt.tf.interface import tf_get_nmt_predictor, tf_get_nmt_vanilla_decoder, \
     tf_get_rnnlm_predictor, tf_get_default_nmt_config, tf_get_rnnlm_prefix
 
 
 args = None
-<<<<<<< HEAD
+
 """This variable is set to the global configuration when
-create_decoder() is called.
-=======
-"""This variable is set to the global configuration when 
 base_init().
->>>>>>> ucam-smt/master
 """
 
 def base_init(new_args):
     """This function should be called before accessing any other
-    function in this module. It initializes the `args` variable on 
+    function in this module. It initializes the `args` variable on
     which all the create_* factory functions rely on as configuration
     object, and it sets up global function pointers and variables for
     basic things like the indexing scheme, logging verbosity, etc.
@@ -145,7 +133,7 @@ def base_init(new_args):
     if args.combination_scheme == 'bayesian_loglin':
         core.breakdown2score_full = core.breakdown2score_bayesian_loglin
     if args.combination_scheme == 'bayesian':
-        core.breakdown2score_full = core.breakdown2score_bayesian  
+        core.breakdown2score_full = core.breakdown2score_bayesian
     ui.validate_args(args)
 
 
@@ -265,7 +253,7 @@ def add_predictors(decoder):
                                       alpha=args.lexnizza_alpha,
                                       beta=args.lexnizza_beta,
                                       trg2src_model_name=
-                                          args.lexnizza_trg2src_model, 
+                                          args.lexnizza_trg2src_model,
                                       trg2src_hparams_set_name=
                                           args.lexnizza_trg2src_hparams_set,
                                       trg2src_checkpoint_dir=
@@ -286,7 +274,6 @@ def add_predictors(decoder):
                                  single_cpu_thread=args.single_cpu_thread,
                                  max_terminal_id=args.syntax_max_terminal_id,
                                  pop_id=args.syntax_pop_id)
-<<<<<<< HEAD
             elif pred == "simt2t":
                 p = SimT2TPredictor(_get_override_args("t2t_src_vocab_size"),
                                  _get_override_args("t2t_trg_vocab_size"),
@@ -309,39 +296,6 @@ def add_predictors(decoder):
                                  single_cpu_thread=args.single_cpu_thread,
                                  max_terminal_id=args.syntax_max_terminal_id,
                                  pop_id=args.syntax_pop_id)
-            elif pred == "bfslayerbylayer":
-                p = T2TBFSLayerbylayerPredictor(
-                         _get_override_args("t2t_src_vocab_size"),
-                         _get_override_args("t2t_trg_vocab_size"),
-                         _get_override_args("t2t_model"),
-                         _get_override_args("t2t_problem"),
-                         _get_override_args("t2t_hparams_set"),
-                         args.t2t_usr_dir,
-                         _get_override_args("t2t_checkpoint_dir"),
-                         single_cpu_thread=args.single_cpu_thread,
-                         max_terminal_id=args.syntax_max_terminal_id,
-                         pop_id=args.syntax_pop_id,
-                         root_id=args.syntax_root_id,
-                         terminal_list=args.syntax_terminal_list,
-                         max_depth=args.syntax_max_depth,
-                         terminal_strategy=args.layerbylayer_terminal_strategy)
-            elif pred == "dfslayerbylayer":
-                p = T2TDFSLayerbylayerPredictor(
-                         _get_override_args("t2t_src_vocab_size"),
-                         _get_override_args("t2t_trg_vocab_size"),
-                         _get_override_args("t2t_model"),
-                         _get_override_args("t2t_problem"),
-                         _get_override_args("t2t_hparams_set"),
-                         args.t2t_usr_dir,
-                         _get_override_args("t2t_checkpoint_dir"),
-                         single_cpu_thread=args.single_cpu_thread,
-                         max_terminal_id=args.syntax_max_terminal_id,
-                         pop_id=args.syntax_pop_id,
-                         root_id=args.syntax_root_id,
-                         terminal_list=args.syntax_terminal_list,
-                         max_depth=args.syntax_max_depth)
-=======
->>>>>>> ucam-smt/master
             elif pred == "bracket":
                 p = BracketPredictor(args.syntax_max_terminal_id,
                                      args.syntax_pop_id,
@@ -419,11 +373,7 @@ def add_predictors(decoder):
                                         args.ngramc_discount_factor)
             elif pred == "unkc":
                 p = UnkCountPredictor(
-<<<<<<< HEAD
-                         args.unkc_src_vocab_size,
-=======
-                         _get_override_args("pred_src_vocab_size"), 
->>>>>>> ucam-smt/master
+                         _get_override_args("pred_src_vocab_size"),
                          [float(l) for l in args.unk_count_lambdas.split(',')])
             elif pred == "length":
                 length_model_weights = [float(w) for w in
@@ -484,7 +434,7 @@ def add_predictors(decoder):
                                         p)
                 elif wrapper == "ngramize":
                     # ngramize always wraps bounded predictors
-                    p = NgramizePredictor(args.min_ngram_order, 
+                    p = NgramizePredictor(args.min_ngram_order,
                                           args.max_ngram_order,
                                           args.max_len_factor, p)
                 elif wrapper == "unkvocab":
@@ -497,13 +447,8 @@ def add_predictors(decoder):
                     decoder.remove_predictors()
                     return
             decoder.add_predictor(pred, p, pred_weight)
-<<<<<<< HEAD
-            logging.info("Added predictor {} with weight {}".format(pred,
-                                                                    pred_weight))
-=======
             logging.info("Initialized predictor {} (weight: {})".format(
                              pred, pred_weight))
->>>>>>> ucam-smt/master
     except IOError as e:
         logging.fatal("One of the files required for setting up the "
                       "predictors could not be read: %s" % e)
@@ -514,7 +459,7 @@ def add_predictors(decoder):
     except NameError as e:
         logging.fatal("Could not find external library: %s. Please make sure "
                       "that your PYTHONPATH and LD_LIBRARY_PATH contains all "
-                      "paths required for the predictors. Stack trace: %s" % 
+                      "paths required for the predictors. Stack trace: %s" %
                       (e, traceback.format_exc()))
         decoder.remove_predictors()
     except ValueError as e:
@@ -531,25 +476,14 @@ def add_predictors(decoder):
         decoder.remove_predictors()
 
 
-<<<<<<< HEAD
-def create_decoder(new_args):
-    """Creates the ``Decoder`` instance. This specifies the search
-=======
+
 def create_decoder():
-    """Creates the ``Decoder`` instance. This specifies the search 
->>>>>>> ucam-smt/master
+    """Creates the ``Decoder`` instance. This specifies the search
     strategy used to traverse the space spanned by the predictors. This
     method relies on the global ``args`` variable.
 
     TODO: Refactor to avoid long argument lists
-<<<<<<< HEAD
 
-    Args:
-        new_args: Command line arguments
-
-=======
-    
->>>>>>> ucam-smt/master
     Returns:
         Decoder. Instance of the search strategy
     """
@@ -720,7 +654,7 @@ def create_output_handlers():
         elif name == "delay":
             outputs.append(DelayOutputHandler(path))
         elif name == "nbest":
-            outputs.append(NBestOutputHandler(path, 
+            outputs.append(NBestOutputHandler(path,
                                               utils.split_comma(args.predictors),
                                               start_sen_id,
                                               trg_map))
@@ -730,7 +664,7 @@ def create_output_handlers():
                                               args.max_ngram_order,
                                               start_sen_id))
         elif name == "timecsv":
-            outputs.append(TimeCSVOutputHandler(path, 
+            outputs.append(TimeCSVOutputHandler(path,
                                                 utils.split_comma(args.predictors),
                                                 start_sen_id))
         elif name == "fst":
@@ -948,12 +882,7 @@ def do_decode(decoder,
                         hypo.trgt_sentence = hypo.trgt_sentence[:-1]
             if args.nbest > 0:
                 hypos = hypos[:args.nbest]
-<<<<<<< HEAD
-            if (args.combination_scheme != 'sum'
-                    and not args.apply_combination_scheme_to_partial_hypos):
-=======
-            if args.combination_scheme != 'sum': 
->>>>>>> ucam-smt/master
+            if args.combination_scheme != 'sum':
                 for hypo in hypos:
                     hypo.total_score = core.breakdown2score_full(
                             hypo.total_score, hypo.score_breakdown, full=True)
@@ -992,7 +921,7 @@ def do_decode(decoder,
             logging.fatal("Attribute error at sentence id %d: %s. This often "
                           "indicates an error in the predictor configuration "
                           "which could not be detected in initialisation. "
-                          "Stack trace: %s" 
+                          "Stack trace: %s"
                           % (sen_idx+1, e, traceback.format_exc()))
         except Exception as e:
             logging.error("An unexpected %s error has occurred at sentence id "
