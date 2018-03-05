@@ -54,12 +54,12 @@ def do_train(args, shuffle=True):
                 # save the model every epoch
                 saver.save(session, config.output_path + "RLmodel", global_step=i)
 
-def do_train_small(args, shuffle=True):
+def do_single_epoch_train(args, shuffle=True):
     """Main training function"""
     with tf.Graph().as_default():
         logging.info("Building model...",)
         start = time.time()
-        linModel = linearModel(config)
+        linModel = QModel(config)
         logging.info("took %.2f seconds", time.time() - start)
 
         train_size = len(linModel.all_hypos)
@@ -86,9 +86,51 @@ def do_train_small(args, shuffle=True):
                 logging.info("loss: %f\n" % loss)
                 # monitored training session handles the checkpoint saving
                 if nb % 6 == 0 and nb != 0:
-                    linModel.config.eps = max(config.min_eps, 0.9*linModel.config.eps)
+                    linModel.config.eps = max(config.min_eps, 0.95*linModel.config.eps)
                     #saver.save(session, config.output_path + "RLmodel", global_step=i)
 
+def do_multi_epoch_train(args, shuffle=True):
+    """Main training function"""
+    with tf.Graph().as_default():
+        logging.info("Building model...",)
+        start = time.time()
+        linModel = QModel(config)
+        logging.info("took %.2f seconds", time.time() - start)
+
+        train_size = len(linModel.all_hypos)
+        indices = np.arange(train_size)
+        assert len(linModel.all_hypos) == len(linModel.all_trg)
+        
+        init = tf.global_variables_initializer()
+        saver = tf.train.Saver()
+
+        if shuffle:
+            np.random.shuffle(indices)
+        # select the training subset from the file
+        indices = indices[:config.batch_size*config.n_batches]
+        batch_count = 0
+        #with linModel.create_session() as session:
+        with create_training_session(config) as session:
+            for current_epoch in range(config.n_epochs):
+                if shuffle:
+                    np.random.shuffle(indices)
+
+                for nb in range(config.n_batches):
+                    batch_count += 1
+                    batch_start = nb*config.batch_size
+                    batch_indices = indices[batch_start: batch_start+config.batch_size]
+                    linModel.cur_hypos = [linModel.all_hypos[i] for i in batch_indices]
+                    targets_batch = [linModel.all_trg[i] for i in batch_indices]
+                    loss = linModel.train_on_batch(session, targets_batch)
+                    logging.info("epoch: %d" % (current_epoch+1))
+                    logging.info("progress: %d/%d" % (batch_start, train_size))
+                    logging.info("eps: %f" % linModel.config.eps)
+                    logging.info("loss: %f\n" % loss)
+                    # monitored training session handles the checkpoint saving
+                    if batch_count % 6 == 0:
+                        # anneal according to global batch count
+                        linModel.config.eps = max(config.min_eps, 0.95*linModel.config.eps)
+                linModel._load_all_initial_hypos(args) # reset all hypotheses
 
 def debug_train(args):
     """Training script for debug only"""
@@ -129,5 +171,5 @@ if __name__ == "__main__":
     utils.switch_to_t2t_indexing()
     config = Config(args)
 
-    do_train_small(args)
+    do_multi_epoch_train(args)
 

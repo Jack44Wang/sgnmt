@@ -159,7 +159,7 @@ class SimPartialHypothesis(PartialHypothesis):
         hypo.score = self.score + score
         hypo.score_breakdown = copy.copy(self.score_breakdown)
         hypo.trgt_sentence = self.trgt_sentence + [word]
-        hypo.add_score_breakdown(score_breakdown)
+        hypo.score_breakdown.append(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
         hypo.progress = self.progress
@@ -175,7 +175,7 @@ class SimPartialHypothesis(PartialHypothesis):
         hypo.score_breakdown = copy.copy(self.score_breakdown)
         hypo.trgt_sentence = self.trgt_sentence + [word]
         hypo.word_to_consume = word
-        hypo.add_score_breakdown(score_breakdown)
+        hypo.score_breakdown.append(score_breakdown)
         # expanding the hypothesis so the action is WRITE
         hypo.actions = self.actions + ['w']
         hypo.progress = self.progress

@@ -17,9 +17,9 @@ class Config:
     max_length = 100 # longest sequence of actions (R/W)
     dropout = 0.5
     hidden_size = 64
-    batch_size = 32 #32
-    n_epochs = 10   # Not used, running a single epoch is taking too long
-    n_batches = 1024
+    batch_size = 128  #32/128
+    n_epochs = 3   
+    n_batches = 256 #1024/256
     lr = 0.001
     eps = 1.0       # initial probability of choosing random action
     min_eps = 0.05 # minimum probability of choosing random action
@@ -36,7 +36,7 @@ class Config:
             # Where to save things.
             self.output_path = args.model_path
         else:
-            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_12/"
+            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_Q6/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 

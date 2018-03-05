@@ -151,14 +151,17 @@ class Model(object):
         utils.load_src_wmap(args.src_wmap)
         utils.load_trg_wmap(args.trg_wmap)
         utils.load_trg_cmap(args.trg_cmap)
-        self.decoder = decode_utils.create_decoder(args)
+        decode_utils.base_init(args)
+        self.decoder = decode_utils.create_decoder()
         self.predictor = self.decoder.predictors[0][0]# only sim_t2t predictor
-        outputs = decode_utils.create_output_handlers()
+        self.outputs = decode_utils.create_output_handlers()
+        self._load_all_initial_hypos(args)
 
+    def _load_all_initial_hypos(self, args):
         # set up SGNMT
         with codecs.open(args.src_train, encoding='utf-8') as f:
             self.all_hypos, self.all_src = decode_utils.prepare_sim_decode(
-                    self.decoder, outputs, [line.strip().split() for line in f])
+                self.decoder, self.outputs, [line.strip().split() for line in f])
 
         with codecs.open(args.trg_train, encoding='utf-8') as f:
             self.all_trg = decode_utils.prepare_trg_sentences(

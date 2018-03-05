@@ -735,7 +735,7 @@ def prepare_sim_decode(decoder, output_handlers, src_sentences):
     all_hypos = []
     all_src = []
 
-    for sen_idx in _get_sentence_indices(args.range, src_sentences):
+    for sen_idx in get_sentence_indices(args.range, src_sentences):
         try:
             if src_sentences is False:
                 src = "0"
@@ -782,7 +782,7 @@ def prepare_trg_sentences(trg_sentences):
     """
     all_trg = []
 
-    for sen_idx in _get_sentence_indices(args.range, trg_sentences):
+    for sen_idx in get_sentence_indices(args.range, trg_sentences):
         try:
             if trg_sentences is False:
                 trg = "0"
