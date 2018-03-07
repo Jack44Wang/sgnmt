@@ -108,8 +108,8 @@ class Model(object):
         With probability eps making a random decision
 
         Returns:
-            qvals:   probs/rewards of chosen actions, [batch_size, 1]
-            actions: Chosen actions, [batch_size, 1]
+            qvals:   probs/rewards of chosen actions, [1, batch_size]
+            actions: Chosen actions, [1, batch_size]
                      0 -> READ
                      1 -> WRITE
         """
@@ -125,8 +125,12 @@ class Model(object):
         change_indices = np.where(uniRan < 0.5*self.config.eps)
         actions[change_indices] = 1 - actions[change_indices]
         actions = self._check_actions(actions) # validate choices
+
         # get the Q values/probabilities correspond to the selected actions
-        qvals = np.choose(actions, predictions.T)
+        # qvals = np.choose(actions, predictions.T)
+
+        # get the max Q values given the state
+        qvals = np.max(predictions, axis=1) 
 
         return actions, qvals
 

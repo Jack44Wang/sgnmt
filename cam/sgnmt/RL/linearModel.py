@@ -36,7 +36,7 @@ class Config:
             # Where to save things.
             self.output_path = args.model_path
         else:
-            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_Q6/"
+            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_Q8/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 
@@ -178,11 +178,16 @@ class linearModel(Model):
             #logging.info(np.array([x[0].netRead for x in self.cur_hypos]))
             #logging.info("\n")
 
+        batch_average_delay = 0.0
 
         # Generate full hypotheses from partial hypotheses
         for idx, hypo in enumerate(self.cur_hypos):
             self.cur_hypos[idx] = hypo[0].generate_full_hypothesis()
+            batch_average_delay += self.cur_hypos[idx].get_average_delay()
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch)
+
+        batch_average_delay /= len(self.cur_hypos)
+        logging.info("\n     batch average delay: %f\n" % batch_average_delay)
         #logging.info("The max reward in this batch is: %f" % np.amax(cum_rewards))
         #logging.info("The min reward in this batch is: %f" % np.amin(cum_rewards))
         #logging.info("The mean reward in this batch is: %f \n" % np.mean(cum_rewards))

@@ -42,7 +42,7 @@ class SimHypothesis(Hypothesis):
         """
         current_delay = 0
         cum_delay = 0
-        logging.info(self.actions)
+        #logging.info(self.actions)
         for action in self.actions:
             if action == 'r':
                 current_delay += 1
@@ -81,7 +81,7 @@ class SimHypothesis(Hypothesis):
 
         Rd = np.zeros(config.max_length)
         #logging.info("actions length: %d" % len(self.actions))
-        logging.info(self.actions)
+        #logging.info(self.actions)
 
         prev_dt = config.d_trg
         for i, action in enumerate(self.actions):
@@ -103,7 +103,7 @@ class SimHypothesis(Hypothesis):
             Rd[i] = config.alpha*consec_penalty + config.beta*ap_penalty
         #logging.info("Delay rewards Rd:")
         #Rd[0] = 0.0 # no penalty for the first read
-        logging.info(Rd)
+        #logging.info(Rd)
 
         return Rd
 
@@ -114,7 +114,7 @@ class SimHypothesis(Hypothesis):
         Returns:
             Rd:     Final delay reward
         """
-        logging.info(self.actions)
+        #logging.info(self.actions)
         consec_penalty = 2 if self.get_consecutive_wait() > config.c_trg else 0
         dt = self.get_average_delay()
         ap_penalty = (dt - config.d_trg) if dt > config.d_trg else 0

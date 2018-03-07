@@ -94,7 +94,7 @@ def do_multi_epoch_train(args, shuffle=True):
     with tf.Graph().as_default():
         logging.info("Building model...",)
         start = time.time()
-        linModel = QModel(config)
+        linModel = linearModel(config)
         logging.info("took %.2f seconds", time.time() - start)
 
         train_size = len(linModel.all_hypos)

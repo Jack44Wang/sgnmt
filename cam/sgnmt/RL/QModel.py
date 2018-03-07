@@ -148,10 +148,15 @@ class QModel(Model):
 
         # give the quality rewards (BLEU) at the end
         _, BLEU = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
+        batch_average_delay = 0.0
         for idx in range(len(self.cur_hypos)):
+            batch_average_delay += self.cur_hypos[idx].get_average_delay()
             targets[len(self.cur_hypos[idx].actions)-1,idx] = \
                 BLEU + self.cur_hypos[idx].get_last_delay_reward(self.config)
 
+        batch_average_delay /= len(self.cur_hypos)
+        logging.info("\n     batch average delay: %f\n" % batch_average_delay)
+        logging.info("\n     batch BLEU:          %f\n" % BLEU)
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),
             actions.flatten(),
