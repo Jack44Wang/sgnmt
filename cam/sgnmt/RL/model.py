@@ -25,8 +25,11 @@ except ImportError:
 class Model(object):
     """Abstracts a Tensorflow graph for a learning task. """
 
-    def __init__(self, args):
-        self.prepareSGNMT(args) # Initialise the SGNMT for hidden states extraction
+    def __init__(self, args, isTargetNet=False):
+        if not isTargetNet:
+            """Initialise the SGNMT for hidden states extraction, not needed
+            if this is the target graph in DQN. """
+            self.prepareSGNMT(args)
 
     def add_placeholders(self):
         """Adds placeholder variables to tensorflow computational graph. """
@@ -85,7 +88,7 @@ class Model(object):
             train_op: The Op for training.
         """
         global_step = tf.Variable(0, name = 'global_step', trainable=False)
-        train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss, 
+        train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss,
                                                     global_step = global_step)
         return train_op
 
@@ -130,7 +133,7 @@ class Model(object):
         # qvals = np.choose(actions, predictions.T)
 
         # get the max Q values given the state
-        qvals = np.max(predictions, axis=1) 
+        qvals = np.max(predictions, axis=1)
 
         return actions, qvals
 

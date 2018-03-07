@@ -128,8 +128,13 @@ class QModel(Model):
         for step in range(self.config.max_length-1):# -1 since already have a READ
             #prev_lengths = [len(x[0].actions) for x in self.cur_hypos]
             hidden_states[step,:,:] = self._get_hidden_states()
-            # current qval is the target for the previous step
+            # current best qval is the target for the previous step
             actions[step,:], targets[step-1,:] = self.predict_one_step(sess,
+                                                       hidden_states[step,:,:])
+            # If the target network exists, decouple the action selection from
+            # value prediction
+            if hasattr(self, 'target'):
+                _, targets[step-1,:] = self.target.predict_one_step(sess,
                                                        hidden_states[step,:,:])
             self._update_hidden_states(actions[step,:])
 
@@ -176,6 +181,6 @@ class QModel(Model):
         return loss
 
     def __init__(self, config):
-        super(QModel, self).__init__(config.args)
+        super(QModel, self).__init__(config.args, config.isTargetNet)
         self.config = config
         self.build()

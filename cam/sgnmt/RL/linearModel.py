@@ -18,11 +18,13 @@ class Config:
     dropout = 0.5
     hidden_size = 64
     batch_size = 128  #32/128
-    n_epochs = 3   
+    n_epochs = 3
     n_batches = 256 #1024/256
     lr = 0.001
     eps = 1.0       # initial probability of choosing random action
     min_eps = 0.05 # minimum probability of choosing random action
+    tau = 0.01    # how much is the target graph updated to the main graph
+    isTargetNet = False
 
     c_trg = 18       # target consecutive delay
     d_trg = 0.8     # target average proportion
@@ -211,6 +213,6 @@ class linearModel(Model):
         return loss
 
     def __init__(self, config):
-        super(linearModel, self).__init__(config.args)
+        super(linearModel, self).__init__(config.args, config.isTargetNet)
         self.config = config
         self.build()

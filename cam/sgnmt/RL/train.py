@@ -30,10 +30,10 @@ def do_train(args, shuffle=True):
         train_size = len(linModel.all_hypos)
         indices = np.arange(train_size)
         assert len(linModel.all_hypos) == len(linModel.all_trg)
-        
+
         init = tf.global_variables_initializer()
         saver = tf.train.Saver()
-        
+
         with tf.Session() as session:
             session.run(init)
             for i in range(config.n_epochs):
@@ -65,10 +65,10 @@ def do_single_epoch_train(args, shuffle=True):
         train_size = len(linModel.all_hypos)
         indices = np.arange(train_size)
         assert len(linModel.all_hypos) == len(linModel.all_trg)
-        
+
         init = tf.global_variables_initializer()
         saver = tf.train.Saver()
-        
+
         #with linModel.create_session() as session:
         with create_training_session(config) as session:
             #session.run(init)
@@ -100,7 +100,7 @@ def do_multi_epoch_train(args, shuffle=True):
         train_size = len(linModel.all_hypos)
         indices = np.arange(train_size)
         assert len(linModel.all_hypos) == len(linModel.all_trg)
-        
+
         init = tf.global_variables_initializer()
         saver = tf.train.Saver()
 
@@ -132,6 +132,69 @@ def do_multi_epoch_train(args, shuffle=True):
                         linModel.config.eps = max(config.min_eps, 0.95*linModel.config.eps)
                 linModel._load_all_initial_hypos(args) # reset all hypotheses
 
+def do_DQN_train(args, shuffle=True):
+    """Main training function"""
+
+    def updateTargetGraph(ops_holder,sess):
+        for op in ops_holder:
+            sess.run(op)
+
+    with tf.Graph().as_default():
+        start = time.time()
+        primary = QModel(config)
+        with tf.variable_scope("target"):
+            # put the target network in a different scope
+            config.isTargetNet = True
+            target = QModel(config)
+        primary.target = target
+        train_size = len(primary.all_hypos)
+        indices = np.arange(train_size)
+        assert len(primary.all_hypos) == len(primary.all_trg)
+
+        init = tf.global_variables_initializer()
+        saver = tf.train.Saver()
+
+        # define procedure to update the target graph
+        trainables = tf.trainable_variables()
+        num_var = len(trainables)
+        op_holder = []
+        for idx,var in enumerate(trainables[0:num_var//2]):
+            op_holder.append(trainables[idx+num_var//2].assign(
+                (var.value()*config.tau) + \
+                ((1-config.tau)*trainables[idx+num_var//2].value())))
+
+        if shuffle:
+            np.random.shuffle(indices)
+        # select the training subset from the file
+        indices = indices[:config.batch_size*config.n_batches]
+        batch_count = 0
+
+        with create_training_session(config) as session:
+            for current_epoch in range(config.n_epochs):
+                if shuffle:
+                    np.random.shuffle(indices)
+
+                for nb in range(config.n_batches):
+                    batch_count += 1
+                    batch_start = nb*config.batch_size
+                    batch_indices = indices[batch_start: batch_start+config.batch_size]
+                    primary.cur_hypos = [primary.all_hypos[i] for i in batch_indices]
+                    targets_batch = [primary.all_trg[i] for i in batch_indices]
+
+                    loss = primary.train_on_batch(session, targets_batch)
+                    updateTargetGraph(op_holder, session)
+
+                    logging.info("epoch: %d" % (current_epoch+1))
+                    logging.info("progress: %d/%d" % (batch_start, train_size))
+                    logging.info("eps: %f" % primary.config.eps)
+                    logging.info("loss: %f\n" % loss)
+                    # monitored training session handles the checkpoint saving
+                    if batch_count % 6 == 0:
+                        # anneal according to global batch count
+                        primary.config.eps = max(config.min_eps, 0.95*primary.config.eps)
+                primary._load_all_initial_hypos(args) # reset all hypotheses
+
+
 def debug_train(args):
     """Training script for debug only"""
     with tf.Graph().as_default():
@@ -145,7 +208,7 @@ def debug_train(args):
         init = tf.global_variables_initializer()
         logging.info("Source 6 length %d" % len(linModel.all_src[5]))
         logging.info("Source 7 length %d" % len(linModel.all_src[6]))
-        
+
         with tf.Session() as session:
             session.run(init)
             for i in range(config.n_epochs):
@@ -171,5 +234,4 @@ if __name__ == "__main__":
     utils.switch_to_t2t_indexing()
     config = Config(args)
 
-    do_multi_epoch_train(args)
-
+    do_DQN_train(args)
