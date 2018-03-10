@@ -23,7 +23,7 @@ class Config:
     lr = 0.001
     eps = 1.0       # initial probability of choosing random action
     min_eps = 0.05 # minimum probability of choosing random action
-    tau = 0.01    # how much is the target graph updated to the main graph
+    tau = 0.5    # how much is the target graph updated to the main graph
     isTargetNet = False
 
     c_trg = 18       # target consecutive delay
@@ -38,7 +38,7 @@ class Config:
             # Where to save things.
             self.output_path = args.model_path
         else:
-            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_Q8/"
+            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_DQN2/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 

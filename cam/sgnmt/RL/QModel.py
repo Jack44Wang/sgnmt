@@ -109,7 +109,20 @@ class QModel(Model):
         loss = tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
         return loss
 
+    def get_targets(self, sess, inputs_batch, actions, dropout=None):
+        """Make one step estimation of the batch target given the actions,
+        using the target network in DQN.
 
+        Returns:
+            targets:   probs/rewards of chosen actions, [1, batch_size]
+        """
+        if dropout is None:
+            dropout = self.config.dropout
+        feed = self.create_feed_dict(inputs_batch, dropout=dropout)
+        predictions = sess.run(self.pred, feed_dict=feed)
+        targets = np.choose(actions, predictions.T)
+        
+        return targets
 
     def _populate_train_dict(self, sess, targets_batch):
         """Prepares the feed dictionary for training.
@@ -132,10 +145,10 @@ class QModel(Model):
             actions[step,:], targets[step-1,:] = self.predict_one_step(sess,
                                                        hidden_states[step,:,:])
             # If the target network exists, decouple the action selection from
-            # value prediction
+            # target values prediction
             if hasattr(self, 'target'):
-                _, targets[step-1,:] = self.target.predict_one_step(sess,
-                                                       hidden_states[step,:,:])
+                targets[step-1,:] = self.target.get_targets(sess,
+                                    hidden_states[step,:,:], actions[step,:])
             self._update_hidden_states(actions[step,:])
 
         BLEU_hypos = []
@@ -149,14 +162,14 @@ class QModel(Model):
             BLEU_refs.append([[str(x) for x in targets_batch[idx]]])
             # targets are just as long as the action sequence, pad the remaining
             # targets with 0
-            targets[action_length-1:,idx] = 0
+            targets[action_length-2:,idx] = 0
 
         # give the quality rewards (BLEU) at the end
         _, BLEU = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
         batch_average_delay = 0.0
         for idx in range(len(self.cur_hypos)):
             batch_average_delay += self.cur_hypos[idx].get_average_delay()
-            targets[len(self.cur_hypos[idx].actions)-1,idx] = \
+            targets[len(self.cur_hypos[idx].actions)-2,idx] = \
                 BLEU + self.cur_hypos[idx].get_last_delay_reward(self.config)
 
         batch_average_delay /= len(self.cur_hypos)
