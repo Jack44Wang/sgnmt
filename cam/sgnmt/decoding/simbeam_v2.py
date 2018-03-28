@@ -78,23 +78,44 @@ class SimBeamDecoder_v2(Decoder):
         self.entropy_bound = 4.0
 
         if not "train_flag" in decoder_args:
+            self._single_cpu_thread = True # true if decoding on cpu, limit threads
             # if doing training of RL, do not execute the following code
             self.config = Config(None) # just to get path
             # The following does NOT use monitored session#####################
-            self.mon_sess = tf.Session()
+            self.mon_sess = tf.Session(config=self._session_config())
+            #self.mon_sess = self._create_session()
+            
             my_saver = tf.train.import_meta_graph(
                         saver.latest_checkpoint(self.config.output_path) + '.meta')
             my_saver.restore(self.mon_sess, 
                              tf.train.latest_checkpoint(self.config.output_path))
             
-            #self.mon_sess = self._create_session()
             RL_graph = tf.get_default_graph()
             # restore placeholder and result tensors
             self._input_holder = RL_graph.get_tensor_by_name("input_holder:0")
             self._dropout_holder = RL_graph.get_tensor_by_name("dropout_holder:0")
             self._prediction_op = RL_graph.get_tensor_by_name("linear/predictions:0")
             
-
+    def _session_config(self):
+        """Creates the session config with t2t default parameters."""
+        graph_options = tf.GraphOptions(optimizer_options=tf.OptimizerOptions(
+            opt_level=tf.OptimizerOptions.L1, do_function_inlining=False))
+        if self._single_cpu_thread:
+            config = tf.ConfigProto(
+                intra_op_parallelism_threads=1,
+                inter_op_parallelism_threads=1,
+                allow_soft_placement=True,
+                graph_options=graph_options,
+                log_device_placement=False)
+        else:
+            gpu_options = tf.GPUOptions(
+                per_process_gpu_memory_fraction=0.95)
+            config = tf.ConfigProto(
+                allow_soft_placement=True,
+                graph_options=graph_options,
+                gpu_options=gpu_options,
+                log_device_placement=False)
+        return config
 
     
     def _create_session(self):
@@ -102,7 +123,8 @@ class SimBeamDecoder_v2(Decoder):
         checkpoint_path = saver.latest_checkpoint(self.config.output_path)
         return training.MonitoredSession(
             session_creator=training.ChiefSessionCreator(
-                checkpoint_filename_with_path=checkpoint_path))
+                checkpoint_filename_with_path=checkpoint_path,
+                config=self._session_config()))
 
     def _get_combined_score(self, hypo):
         """Combines hypo score with future cost estimates."""

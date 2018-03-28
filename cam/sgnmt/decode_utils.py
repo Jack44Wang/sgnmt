@@ -275,8 +275,8 @@ def add_predictors(decoder):
                                  max_terminal_id=args.syntax_max_terminal_id,
                                  pop_id=args.syntax_pop_id)
             elif pred == "simt2t":
-                p = SimT2TPredictor(_get_override_args("t2t_src_vocab_size"),
-                                 _get_override_args("t2t_trg_vocab_size"),
+                p = SimT2TPredictor(_get_override_args("pred_src_vocab_size"),
+                                 _get_override_args("pred_trg_vocab_size"),
                                  _get_override_args("t2t_model"),
                                  _get_override_args("t2t_problem"),
                                  _get_override_args("t2t_hparams_set"),
@@ -286,8 +286,8 @@ def add_predictors(decoder):
                                  max_terminal_id=args.syntax_max_terminal_id,
                                  pop_id=args.syntax_pop_id)
             elif pred == "simt2tv2":
-                p = SimT2TPredictor_v2(_get_override_args("t2t_src_vocab_size"),
-                                 _get_override_args("t2t_trg_vocab_size"),
+                p = SimT2TPredictor_v2(_get_override_args("pred_src_vocab_size"),
+                                 _get_override_args("pred_trg_vocab_size"),
                                  _get_override_args("t2t_model"),
                                  _get_override_args("t2t_problem"),
                                  _get_override_args("t2t_hparams_set"),

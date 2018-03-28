@@ -179,6 +179,7 @@ class BeamDecoder(Decoder):
             self.min_score = utils.NEG_INF
             self.best_scores = []
             for hypo in hypos:
+                logging.info("in each hypo")
                 if hypo.get_last_word() == utils.EOS_ID:
                     next_hypos.append(hypo)
                     next_scores.append(self._get_combined_score(hypo))

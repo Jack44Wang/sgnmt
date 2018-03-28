@@ -1,4 +1,5 @@
 import logging
+import codecs
 from datetime import datetime
 
 import tensorflow as tf
@@ -6,6 +7,8 @@ import numpy as np
 from model import Model
 from linearModel import Config
 from bleu import corpus_bleu
+from cam.sgnmt.decoding.beam import BeamDecoder
+from cam.sgnmt.decode_utils import prepare_trg_sentences
 
 class QModel(Model):
     """
@@ -153,6 +156,7 @@ class QModel(Model):
 
         BLEU_hypos = []
         BLEU_refs = []
+        wue_BLEU_hypos = []  # the hypo holder for WUE decoding
         # Generate full hypotheses from partial hypotheses
         for idx, hypo in enumerate(self.cur_hypos):
             self.cur_hypos[idx] = hypo[0].generate_full_hypothesis()
@@ -160,21 +164,30 @@ class QModel(Model):
             # get hypothesis and reference for BLEU evaluation
             BLEU_hypos.append([str(x) for x in self.cur_hypos[idx].trgt_sentence])
             BLEU_refs.append([[str(x) for x in targets_batch[idx]]])
+            if hasattr(self, 'target') and self.config.useBLEUDrop:
+                wue_BLEU_hypos.append([str(x) for x in 
+                                self.all_wue_trans[self.cur_hypos[idx].lst_id]])
             # targets are just as long as the action sequence, pad the remaining
             # targets with 0
             targets[action_length-2:,idx] = 0
 
         # give the quality rewards (BLEU) at the end
-        _, BLEU = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
+        _, quality = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
+        
+        if self.config.useBLEUDrop:
+            _, wue_BLEU = corpus_bleu(BLEU_refs, wue_BLEU_hypos)
+            quality = quality - wue_BLEU
         batch_average_delay = 0.0
         for idx in range(len(self.cur_hypos)):
             batch_average_delay += self.cur_hypos[idx].get_average_delay()
             targets[len(self.cur_hypos[idx].actions)-2,idx] = \
-                BLEU + self.cur_hypos[idx].get_last_delay_reward(self.config)
+                quality + self.cur_hypos[idx].get_last_delay_reward(self.config)
 
         batch_average_delay /= len(self.cur_hypos)
         logging.info("\n     batch average delay: %f\n" % batch_average_delay)
-        logging.info("\n     batch BLEU:          %f\n" % BLEU)
+        logging.info("\n     batch (delta) BLEU:  %f\n" % quality)
+        if self.config.useBLEUDrop:
+            logging.info("\n     batch WUE BLEU:      %f\n" % wue_BLEU)
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),
             actions.flatten(),
@@ -197,3 +210,8 @@ class QModel(Model):
         super(QModel, self).__init__(config.args, config.isTargetNet)
         self.config = config
         self.build()
+        if config.useBLEUDrop and not config.isTargetNet:
+            with codecs.open(config.args.trg_trans, encoding='utf-8') as f:
+                self.all_wue_trans = prepare_trg_sentences(
+                                         [line.strip().split() for line in f])
+

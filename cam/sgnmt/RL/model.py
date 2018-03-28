@@ -278,6 +278,7 @@ class Model(object):
 
             incremental_BLEU, _ = get_incremental_BLEU(
                             self.cur_hypos[i].trgt_sentence, targets_batch[i])
+            logging.info(cum_rewards[:,i])
             cum_rewards[indices,i] += incremental_BLEU
-
+            logging.info(cum_rewards[:,i])
         return cum_rewards
