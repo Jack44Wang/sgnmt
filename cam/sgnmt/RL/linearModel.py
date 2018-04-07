@@ -4,6 +4,7 @@ from datetime import datetime
 import tensorflow as tf
 import numpy as np
 from model import Model
+from bleu import corpus_bleu
 
 
 class Config:
@@ -17,7 +18,7 @@ class Config:
     max_length = 100 # longest sequence of actions (R/W)
     dropout = 0.5
     hidden_size = 64
-    batch_size = 32  #32/128
+    batch_size = 256  #32/128
     n_epochs = 3
     n_batches = 256 #1024/256
     lr = 0.001
@@ -39,7 +40,7 @@ class Config:
             # Where to save things.
             self.output_path = args.model_path
         else:
-            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_DQN5/"
+            self.output_path = "/data/mifs_scratch/zw296/exp/t2t/jaen-wat/RL_train_17/"
         self.model_output = self.output_path + "model.weights"
         self.log_output = self.output_path + "log"
 
@@ -151,7 +152,7 @@ class linearModel(Model):
 
 
 
-    def _populate_train_dict(self, sess, targets_batch):
+    def populate_train_dict(self, sess, targets_batch):
         """Prepares the feed dictionary for training.
         Args:
             targets_batch:  Target sentences in ids [batch_size, max_length]
@@ -166,12 +167,12 @@ class linearModel(Model):
         for step in range(self.config.max_length-1):# -1 since already have a READ
             #prev_lengths = [len(x[0].actions) for x in self.cur_hypos]
             hidden_states[step,:,:] = self._get_hidden_states()
-            actions[step,:], probs = self.predict_one_step(sess,
+            actions[step,:], probs, _ = self.predict_one_step(sess,
                                                        hidden_states[step,:,:])
             #logging.info("step %d     actions:" % step)
             #logging.info(actions[step,:])
             #logging.info("probs:")
-            #logging.info(probs)
+            #logging.info(np.max(probs, axis=1))
             #logging.info("Actions length of 1st sentence %d" % len(self.cur_hypos[0][0].actions))
             #logging.info("\n")
             self._update_hidden_states(actions[step,:])
@@ -182,18 +183,20 @@ class linearModel(Model):
             #logging.info("\n")
 
         batch_average_delay = 0.0
-
+        BLEU_hypos = []
+        BLEU_refs = []
         # Generate full hypotheses from partial hypotheses
         for idx, hypo in enumerate(self.cur_hypos):
             self.cur_hypos[idx] = hypo[0].generate_full_hypothesis()
             batch_average_delay += self.cur_hypos[idx].get_average_delay()
+            BLEU_hypos.append([str(x) for x in self.cur_hypos[idx].trgt_sentence])
+            BLEU_refs.append([[str(x) for x in targets_batch[idx]]])
         cum_rewards = self._get_bacth_cumulative_rewards(targets_batch)
 
+        _, quality = corpus_bleu(BLEU_refs, BLEU_hypos) # BLEU score for the batch
         batch_average_delay /= len(self.cur_hypos)
         logging.info("\n     batch average delay: %f\n" % batch_average_delay)
-        #logging.info("The max reward in this batch is: %f" % np.amax(cum_rewards))
-        #logging.info("The min reward in this batch is: %f" % np.amin(cum_rewards))
-        #logging.info("The mean reward in this batch is: %f \n" % np.mean(cum_rewards))
+        logging.info("\n     batch BLEU:          %f\n" % quality)
 
         train_dict = self.create_feed_dict(
             np.reshape(hidden_states, (-1, self.config.d_model)),
@@ -203,15 +206,43 @@ class linearModel(Model):
 
         return train_dict
 
-    def train_on_batch(self, sess, targets_batch):
-        """Specify the batch to train in ``self.cur_hypos''
-        Run the SGNMT to get decisions and rewards, then excute the RL agent to
-        compute the loss (actions will be exactly the same).
+    def _get_bacth_cumulative_rewards(self, targets_batch):
+        """Calculate the Cumulative rewards for the full hypotheses stored in
+        ``self.cur_hypos'', where the rewards encode the delay and
+        the quality.
+
+        Args:
+            targets_batch:  A batch of target data (correct translation).
+        Returns:
+            cum_rewards:    Cumulative rewards for all current hypotheses,
+                            numpy array of shape [max_length, batch_size]
         """
-        # train on batch, returns the loss to monitor
-        feed = self._populate_train_dict(sess, targets_batch)
-        _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
-        return loss
+        cum_rewards = np.zeros((self.config.max_length, len(targets_batch)),
+                               dtype=np.float32)
+        for i in range(len(targets_batch)):
+            #logging.info("Type of hypo is %s" % type(self.cur_hypos[i]))
+            cum_rewards[:,i] = self.cur_hypos[i].get_delay_rewards(self.config)
+            # find indices of writes in the action list
+            indices = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "w"]
+            Rs = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "r"]
+            logging.info("R/length: %d/%d" % (len(Rs), len(self.all_src[self.cur_hypos[i].lst_id])))
+            logging.info("R/W: %d/%d" % (len(Rs), len(indices)))
+            assert len(Rs) <= len(self.all_src[self.cur_hypos[i].lst_id])
+
+            # check the length of translation hypothesis is the same as number of "w"
+            #logging.info("len(indices) = %d" % len(indices))
+            #logging.info("len(self.cur_hypos[i].trgt_sentence) = %d" %
+            #        len(self.cur_hypos[i].trgt_sentence))
+            #logging.info(self.cur_hypos[i].trgt_sentence)
+            assert len(indices) <= len(self.cur_hypos[i].trgt_sentence)
+
+            incremental_BLEU, _ = get_incremental_BLEU(
+                            self.cur_hypos[i].trgt_sentence, targets_batch[i])
+            logging.info(cum_rewards[:,i])
+            cum_rewards[indices,i] += incremental_BLEU
+            logging.info(cum_rewards[:,i])
+        return cum_rewards
+
 
     def __init__(self, config):
         super(linearModel, self).__init__(config.args, config.isTargetNet)

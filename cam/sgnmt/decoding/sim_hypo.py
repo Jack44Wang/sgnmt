@@ -101,8 +101,9 @@ class SimHypothesis(Hypothesis):
             #logging.info("%d/%d" % (i, config.max_length))
             prev_dt = dt
             Rd[i] = config.alpha*consec_penalty + config.beta*ap_penalty
+
+        Rd = np.cumsum(Rd[1:]) # cum reward, no penalty for the first read
         #logging.info("Delay rewards Rd:")
-        #Rd[0] = 0.0 # no penalty for the first read
         #logging.info(Rd)
 
         return Rd

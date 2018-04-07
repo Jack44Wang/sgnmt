@@ -127,7 +127,7 @@ def do_multi_epoch_train(args, shuffle=True):
                     logging.info("eps: %f" % linModel.config.eps)
                     logging.info("loss: %f\n" % loss)
                     # monitored training session handles the checkpoint saving
-                    if batch_count % 5 == 0:
+                    if batch_count % 6 == 0:
                         # anneal according to global batch count
                         linModel.config.eps = max(config.min_eps, 0.95*linModel.config.eps)
                 linModel._load_all_initial_hypos(args) # reset all hypotheses
@@ -234,4 +234,4 @@ if __name__ == "__main__":
     utils.switch_to_t2t_indexing()
     config = Config(args)
 
-    do_DQN_train(args, False)
+    do_multi_epoch_train(args, False)

@@ -92,8 +92,11 @@ class Model(object):
                                                     global_step = global_step)
         return train_op
 
-    def train_on_batch(self, sess, inputs_batch, targets_batch):
+    def train_on_batch(self, sess, targets_batch):
         """Perform one step of gradient descent on the provided batch of data.
+        Specify the batch to train in ``self.cur_hypos''
+        Run the SGNMT to get decisions and rewards, then excute the RL agent to
+        compute the loss (actions will be exactly the same).
 
         Args:
             sess: tf.Session()
@@ -102,7 +105,10 @@ class Model(object):
         Returns:
             loss: loss over the batch (a scalar)
         """
-        feed = self.create_feed_dict(inputs_batch, targets_batch=targets_batch)
+        """
+        """
+        # train on batch, returns the loss to monitor
+        feed = self.populate_train_dict(sess, targets_batch)
         _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
         return loss
 
@@ -122,6 +128,7 @@ class Model(object):
         predictions = sess.run(self.pred, feed_dict=feed)
         actions = np.argmax(predictions, axis=1)
 
+        optimal_actions = self._check_actions(actions) # local `optimal'
         # choose a random action with probability eps
         # Note 50% random actions will be different from the original one
         uniRan = np.random.uniform(size=actions.shape[0])
@@ -133,9 +140,9 @@ class Model(object):
         # qvals = np.choose(actions, predictions.T)
 
         # get the max Q values given the state
-        qvals = np.max(predictions, axis=1)
+        #qvals = np.max(predictions, axis=1)
 
-        return actions, qvals
+        return actions, predictions, optimal_actions
 
     def build(self):
         self.add_placeholders()
@@ -246,39 +253,4 @@ class Model(object):
             h_states[sentence,:] = self.predictor.get_last_decoder_state()
         return h_states
 
-    def _get_bacth_cumulative_rewards(self, targets_batch):
-        """Calculate the Cumulative rewards for the full hypotheses stored in
-        ``self.cur_hypos'', where the rewards encode the delay and
-        the quality.
 
-        Args:
-            targets_batch:  A batch of target data (correct translation).
-        Returns:
-            cum_rewards:    Cumulative rewards for all current hypotheses,
-                            numpy array of shape [max_length, batch_size]
-        """
-        cum_rewards = np.zeros((self.config.max_length, len(targets_batch)),
-                               dtype=np.float32)
-        for i in range(len(targets_batch)):
-            #logging.info("Type of hypo is %s" % type(self.cur_hypos[i]))
-            cum_rewards[:,i] = self.cur_hypos[i].get_delay_rewards(self.config)
-            # find indices of writes in the action list
-            indices = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "w"]
-            Rs = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "r"]
-            logging.info("R/length: %d/%d" % (len(Rs), len(self.all_src[self.cur_hypos[i].lst_id])))
-            logging.info("R/W: %d/%d" % (len(Rs), len(indices)))
-            assert len(Rs) <= len(self.all_src[self.cur_hypos[i].lst_id])
-
-            # check the length of translation hypothesis is the same as number of "w"
-            #logging.info("len(indices) = %d" % len(indices))
-            #logging.info("len(self.cur_hypos[i].trgt_sentence) = %d" %
-            #        len(self.cur_hypos[i].trgt_sentence))
-            #logging.info(self.cur_hypos[i].trgt_sentence)
-            assert len(indices) <= len(self.cur_hypos[i].trgt_sentence)
-
-            incremental_BLEU, _ = get_incremental_BLEU(
-                            self.cur_hypos[i].trgt_sentence, targets_batch[i])
-            logging.info(cum_rewards[:,i])
-            cum_rewards[indices,i] += incremental_BLEU
-            logging.info(cum_rewards[:,i])
-        return cum_rewards

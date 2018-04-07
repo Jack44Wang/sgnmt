@@ -112,22 +112,8 @@ class QModel(Model):
         loss = tf.reduce_sum(tf.boolean_mask(raw_loss, mask))
         return loss
 
-    def get_targets(self, sess, inputs_batch, actions, dropout=None):
-        """Make one step estimation of the batch target given the actions,
-        using the target network in DQN.
 
-        Returns:
-            targets:   probs/rewards of chosen actions, [1, batch_size]
-        """
-        if dropout is None:
-            dropout = self.config.dropout
-        feed = self.create_feed_dict(inputs_batch, dropout=dropout)
-        predictions = sess.run(self.pred, feed_dict=feed)
-        targets = np.choose(actions, predictions.T)
-        
-        return targets
-
-    def _populate_train_dict(self, sess, targets_batch):
+    def populate_train_dict(self, sess, targets_batch):
         """Prepares the feed dictionary for training.
         Args:
             targets_batch:  Target sentences in ids [batch_size, max_length]
@@ -145,13 +131,16 @@ class QModel(Model):
             #prev_lengths = [len(x[0].actions) for x in self.cur_hypos]
             hidden_states[step,:,:] = self._get_hidden_states()
             # current best qval is the target for the previous step
-            actions[step,:], targets[step-1,:] = self.predict_one_step(sess,
+            actions[step,:], qvals, optimal_actions = self.predict_one_step(sess,
                                                        hidden_states[step,:,:])
+            
             # If the target network exists, decouple the action selection from
             # target values prediction
             if hasattr(self, 'target'):
-                targets[step-1,:] = self.target.get_targets(sess,
-                                    hidden_states[step,:,:], actions[step,:])
+                targets[step-1,:] = self.target._get_targets(sess,
+                                    hidden_states[step,:,:], optimal_actions)
+            else:
+                targets[step-1,:] = np.choose(optimal_actions, qvals.T)
             self._update_hidden_states(actions[step,:])
 
         BLEU_hypos = []
@@ -196,15 +185,22 @@ class QModel(Model):
 
         return train_dict
 
-    def train_on_batch(self, sess, targets_batch):
-        """Specify the batch to train in ``self.cur_hypos''
-        Run the SGNMT to get decisions and rewards, then excute the RL agent to
-        compute the loss (actions will be exactly the same).
+
+    def _get_targets(self, sess, inputs_batch, actions, dropout=None):
+        """Make one step estimation of the batch target given the actions,
+        using the target network in DQN.
+
+        Returns:
+            targets:   probs/rewards of chosen actions, [1, batch_size]
         """
-        # train on batch, returns the loss to monitor
-        feed = self._populate_train_dict(sess, targets_batch)
-        _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
-        return loss
+        if dropout is None:
+            dropout = self.config.dropout
+        feed = self.create_feed_dict(inputs_batch, dropout=dropout)
+        predictions = sess.run(self.pred, feed_dict=feed)
+        targets = np.choose(actions, predictions.T)
+        
+        return targets
+
 
     def __init__(self, config):
         super(QModel, self).__init__(config.args, config.isTargetNet)
