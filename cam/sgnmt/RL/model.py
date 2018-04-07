@@ -7,7 +7,6 @@ import copy
 import numpy as np
 import tensorflow as tf
 
-from bleu import get_incremental_BLEU
 from cam.sgnmt import utils
 
 #from cam.sgnmt.decode_utils import create_decoder, create_output_handlers, \

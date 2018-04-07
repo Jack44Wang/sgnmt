@@ -4,8 +4,7 @@ from datetime import datetime
 import tensorflow as tf
 import numpy as np
 from model import Model
-from bleu import corpus_bleu
-
+from bleu import corpus_bleu, get_incremental_BLEU
 
 class Config:
     """Holds model hyperparams and data information.
@@ -221,10 +220,10 @@ class linearModel(Model):
                                dtype=np.float32)
         for i in range(len(targets_batch)):
             #logging.info("Type of hypo is %s" % type(self.cur_hypos[i]))
-            cum_rewards[:,i] = self.cur_hypos[i].get_delay_rewards(self.config)
+            cum_rewards[:-1,i] = self.cur_hypos[i].get_delay_rewards(self.config)
             # find indices of writes in the action list
-            indices = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "w"]
-            Rs = [k for k, x in enumerate(self.cur_hypos[i].actions) if x == "r"]
+            indices = [k-1 for k, x in enumerate(self.cur_hypos[i].actions) if x == "w"]
+            Rs = [k-1 for k, x in enumerate(self.cur_hypos[i].actions) if x == "r"]
             logging.info("R/length: %d/%d" % (len(Rs), len(self.all_src[self.cur_hypos[i].lst_id])))
             logging.info("R/W: %d/%d" % (len(Rs), len(indices)))
             assert len(Rs) <= len(self.all_src[self.cur_hypos[i].lst_id])
